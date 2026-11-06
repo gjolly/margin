@@ -7,15 +7,15 @@ are pinned to the same Git revision; Cargo.lock and flake.lock pin dependencies.
 
 From this project:
 
-    nix develop -c cargo build --locked
-    nix develop -c cargo run --locked
+    nix develop -c cargo build --release --locked
+    nix develop -c cargo run --release --locked
 
 The viewer runs Git in its current working directory. To inspect another
 repository, enter the development shell and invoke the binary there:
 
     nix develop
-    cargo build --locked
-    export PATH="$PWD/target/debug:$PATH"
+    cargo build --release --locked
+    export PATH="$PWD/target/release:$PATH"
     cd /path/to/repository
     rune-diff
     rune-diff --cached
@@ -27,6 +27,8 @@ Arguments are passed directly to Git, preserving the -- path separator and
 shell-quoted paths. With no arguments, this shows tracked working-tree changes
 against the index, just like git diff. Untracked files are not included.
 Split view is the default; the toolbar can switch to unified view.
+Use the release build for interactive use: the default debug build leaves Rune's
+layout, text shaping, and rendering code unoptimized and can scroll slowly.
 
 The viewer controls patch formatting (no colors, external diff helpers or
 textconv). Output-only modes such as --name-only, --raw, --check and --output

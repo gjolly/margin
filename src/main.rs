@@ -8,13 +8,14 @@ mod git;
 struct Review {
     diff: DiffState,
     message: Option<String>,
+    summary: String,
     zoom_percent: u16,
 }
 
 fn init() -> Review {
     let mut diff = DiffState::new(Vec::new());
     diff.set_mode(DiffMode::Split);
-    Review { diff, message: Some("Loading Git diff…".into()), zoom_percent: 100 }
+    Review { diff, message: Some("Loading Git diff…".into()), summary: "0 files  +0 −0".into(), zoom_percent: 100 }
 }
 
 fn load_result(s: &mut Review, result: Result<String, String>) {
@@ -30,6 +31,11 @@ fn load_result(s: &mut Review, result: Result<String, String>) {
             } else {
                 None
             };
+            // The patch is immutable; don't recount its lines during scrolling.
+            let (adds, dels) = files.iter().fold((0, 0), |(a, d), f| (a + f.additions(), d + f.deletions()));
+            let count = files.len();
+            let noun = if count == 1 { "file" } else { "files" };
+            s.summary = format!("{count} {noun}  +{adds} −{dels}");
             s.diff = DiffState::new(files);
             s.diff.set_mode(DiffMode::Split);
         }
@@ -49,11 +55,6 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
             s.diff.set_mode(if i == 1 { DiffMode::Split } else { DiffMode::Unified });
         },
     );
-    let (adds, dels) = s.diff.files().iter().fold((0, 0), |(a, d), f| (a + f.additions(), d + f.deletions()));
-    let files = match s.diff.files().len() {
-        1 => "1 file".to_owned(),
-        n => format!("{n} files"),
-    };
     let bar = row()
         .key("bar")
         .w_full()
@@ -63,7 +64,7 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
         .items_center()
         .fill(k.c.layer_01)
         .child(text("Git diff").font(k.ty.ui_medium).color(k.c.text_base))
-        .child(text(format!("{files}  +{adds} −{dels}")).font(k.ty.ui).color(k.c.text_muted))
+        .child(text(s.summary.clone()).font(k.ty.ui).color(k.c.text_muted))
         .child(row().grow(1.0))
         .child(modes.build(&k));
     let diff = match &s.message {

@@ -36,10 +36,12 @@ fn git_results_replace_loading_with_split_view_or_a_message() {
     let mut state = init();
     load_result(&mut state, Ok("diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n".into()));
     assert_eq!(state.diff.files().len(), 1);
+    assert_eq!(state.summary, "1 file  +1 −1");
     assert_eq!(state.diff.mode(), DiffMode::Split);
     assert!(state.message.is_none());
     load_result(&mut state, Ok(String::new()));
     assert!(state.diff.files().is_empty());
+    assert_eq!(state.summary, "0 files  +0 −0");
     assert!(state.message.as_ref().unwrap().contains("No changes"));
     load_result(&mut state, Err("Invalid revision".into()));
     assert_eq!(state.message.as_deref(), Some("Invalid revision"));
