@@ -26,6 +26,12 @@ nix develop -c cargo run --locked -- --scene split --theme dark --snap diff.png
 The copied example includes placeholder Reply/Resolve buttons; it is a UI demo,
 not yet a viewer for arbitrary Git repositories.
 
+## UI zoom
+
+Press Ctrl++ (or Ctrl+=) to enlarge the entire UI and Ctrl+- to shrink it.
+Zoom changes in 10% steps, from 50% to 200%. Ctrl+0 resets to 100%.
+Zoom lasts for the current session.
+
 ## Distribution
 
 The Nix development binary references the Nix store. For Ubuntu distribution,

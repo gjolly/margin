@@ -1,6 +1,6 @@
 //! A diff viewer adapted from the Rune Kit diff example (MIT, Copyright 2026 Anomaly).
 //! Run with `cargo run -- --scene split --theme dark` inside `nix develop`.
-use rune::{App, AppSpec, Cx, El, KeyEvent, Tx, col, row, text};
+use rune::{App, AppSpec, Cx, El, Key, KeyEvent, Tx, col, row, text};
 use rune_kit::diff::{Annotation, DiffMode, DiffState, DiffView, FileDiff, LineRange, LineRef, Side, parse};
 use rune_kit::{Button, ButtonVariant, Kit, SegmentedControl};
 
@@ -187,6 +187,7 @@ pub fn clamp(&self, wait: Duration) -> Duration {
 struct Review {
     diff: DiffState,
     composing: Option<LineRange>,
+    zoom_percent: u16,
 }
 
 fn init() -> Review {
@@ -198,7 +199,7 @@ fn init() -> Review {
     files.extend(parse(PATCH));
     let mut diff = DiffState::new(files);
     diff.set_annotations(vec![Annotation::new(0, LineRef::new(Side::New, 19), "jitter")]);
-    Review { diff, composing: None }
+    Review { diff, composing: None, zoom_percent: 100 }
 }
 
 fn view(s: &Review, cx: &mut Cx<Review>) -> El {
@@ -232,7 +233,18 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
         .annotation(move |s: &Review, a: &Annotation| comment(&kc, s, a))
         .on_comment(|s: &mut Review, lines, _| s.composing = Some(lines))
         .build(s, &k);
-    col().w_full().h_full().fill(k.c.bg_base).child(bar).child(diff)
+    // Only size changes rebuild this view; scrolling does not.
+    let [width, height] = cx.layout_size("viewport").unwrap_or([900.0, 620.0]);
+    let zoom = s.zoom_percent as f32 / 100.0;
+    let content = col()
+        .size(width / zoom, height / zoom)
+        .absolute(0.0, 0.0)
+        .scale(zoom)
+        .origin(0.0, 0.0)
+        .fill(k.c.bg_base)
+        .child(bar)
+        .child(diff);
+    col().key("viewport").w_full().h_full().fill(k.c.bg_base).child(content)
 }
 
 /// A review thread under a line.
@@ -264,7 +276,29 @@ fn comment(k: &Kit, _: &Review, a: &Annotation) -> El {
 }
 
 fn on_key(s: &mut Review, ev: &KeyEvent, tx: &mut Tx) -> bool {
+    if let Some(zoom) = zoom_shortcut(s.zoom_percent, ev) {
+        s.zoom_percent = zoom;
+        tx.instant();
+        return true;
+    }
     s.diff.key(ev, tx)
+}
+
+fn zoom_shortcut(current: u16, ev: &KeyEvent) -> Option<u16> {
+    if !ev.mods.ctrl || ev.mods.alt || ev.mods.logo {
+        return None;
+    }
+    let key = match &ev.key {
+        Key::Command(c) => *c,
+        Key::Text(text) if text.chars().count() == 1 => text.chars().next()?,
+        _ => return None,
+    };
+    match key {
+        '+' | '=' => Some(current.saturating_add(10).clamp(50, 200)),
+        '-' => Some(current.saturating_sub(10).clamp(50, 200)),
+        '0' => Some(100),
+        _ => None,
+    }
 }
 
 fn main() {
@@ -281,3 +315,6 @@ fn main() {
     };
     App::new(spec).modifier_keys().run();
 }
+
+#[cfg(test)]
+mod tests;
