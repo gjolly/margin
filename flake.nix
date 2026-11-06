@@ -16,7 +16,7 @@
           ];
         in {
           default = pkgs.mkShell {
-            packages = with pkgs; [ cargo rustc pkg-config fontconfig ];
+            packages = with pkgs; [ cargo rustc pkg-config fontconfig git ];
             buildInputs = runtimeLibraries ++ [ pkgs.fontconfig ];
             shellHook = ''
               export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibraries}:/run/opengl-driver/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"

@@ -1,41 +1,59 @@
 # Rune Diff
 
-A standalone starting point based on Rune Kit's diff example. Rune and Rune Kit
+A Git diff viewer based on Rune Kit's diff example (MIT). Rune and Rune Kit
 are pinned to the same Git revision; Cargo.lock and flake.lock pin dependencies.
-The UI currently displays sample changes, with unified/split views and a review comment.
 
-## Local development on NixOS
+## Build and run on NixOS
 
-```sh
-nix develop -c cargo build --locked
-nix develop -c cargo run --locked -- --scene split --theme dark
-```
+From this project:
 
-Or enter `nix develop` once, then use `cargo build` and `cargo run` normally.
-The shell supplies the compiler, C linker, font libraries, Wayland/X11 libraries
-and Vulkan loader. It adds the NixOS host GPU driver directory to the library
-search path. Run from a graphical desktop session with working Vulkan drivers.
-The shell supports x86-64 and ARM64 Linux; validation is performed on the setup host.
+    nix develop -c cargo build --locked
+    nix develop -c cargo run --locked
 
-To render a screenshot without opening a window (still requires a GPU backend):
+The viewer runs Git in its current working directory. To inspect another
+repository, enter the development shell and invoke the binary there:
 
-```sh
-nix develop -c cargo run --locked -- --scene split --theme dark --snap diff.png
-```
+    nix develop
+    cargo build --locked
+    export PATH="$PWD/target/debug:$PATH"
+    cd /path/to/repository
+    rune-diff
+    rune-diff --cached
+    rune-diff HEAD~1 HEAD
+    rune-diff main...HEAD -- src/
+    rune-diff --no-index old.txt new.txt
 
-The copied example includes placeholder Reply/Resolve buttons; it is a UI demo,
-not yet a viewer for arbitrary Git repositories.
+Arguments are passed directly to Git, preserving the -- path separator and
+shell-quoted paths. With no arguments, this shows tracked working-tree changes
+against the index, just like git diff. Untracked files are not included.
+Split view is the default; the toolbar can switch to unified view.
 
-## UI zoom
+The viewer controls patch formatting (no colors, external diff helpers or
+textconv). Output-only modes such as --name-only, --raw, --check and --output
+are rejected. Rune demo flags such as --scene and --snap are no longer accepted.
+Git runs once after the first frame; this is a snapshot, with no automatic refresh.
+Errors and empty results appear in the window. Text patches must be UTF-8;
+binary changes show Git's binary-file summary.
 
-Press Ctrl++ (or Ctrl+=) to enlarge the entire UI and Ctrl+- to shrink it.
-Zoom changes in 10% steps, from 50% to 200%. Ctrl+0 resets to 100%.
-Zoom lasts for the current session.
+## UI zoom and navigation
+
+Ctrl++ (or Ctrl+=) enlarges the whole UI; Ctrl+- shrinks it.
+Zoom changes in 10% steps from 50% to 200%; Ctrl+0 resets to 100%.
+Zoom lasts for the current session. j/k navigate hunks; ]/[ navigate files.
+
+## Development environment
+
+The Nix shell supplies Rust, Git, the C linker, font libraries, Wayland/X11
+libraries and the Vulkan loader. It configures library lookup, including the
+NixOS host GPU drivers. Run from a desktop session with working Vulkan drivers.
+The shell supports x86-64 and ARM64 Linux; only the setup host has been tested.
+
+    nix develop -c cargo test --locked
 
 ## Distribution
 
 The Nix development binary references the Nix store. For Ubuntu distribution,
-build the same Cargo project in Ubuntu CI or a container and package its runtime
+build this Cargo project in Ubuntu CI or a container and package its runtime
 dependencies. Ubuntu packaging is not configured yet.
 
 ## License

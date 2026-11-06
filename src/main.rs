@@ -1,205 +1,43 @@
-//! A diff viewer adapted from the Rune Kit diff example (MIT, Copyright 2026 Anomaly).
-//! Run with `cargo run -- --scene split --theme dark` inside `nix develop`.
+//! A Git diff viewer based on the Rune Kit example (MIT, Copyright 2026 Anomaly).
 use rune::{App, AppSpec, Cx, El, Key, KeyEvent, Tx, col, row, text};
-use rune_kit::diff::{Annotation, DiffMode, DiffState, DiffView, FileDiff, LineRange, LineRef, Side, parse};
-use rune_kit::{Button, ButtonVariant, Kit, SegmentedControl};
+use rune_kit::diff::{DiffMode, DiffState, DiffView, parse};
+use rune_kit::{Kit, SegmentedControl};
 
-const OLD_RS: &str = "use std::time::Duration;
-
-/// How long to wait before trying a request again.
-pub struct Backoff {
-    base: Duration,
-    max: Duration,
-    attempt: u32,
-}
-
-impl Backoff {
-    pub fn new(base: Duration, max: Duration) -> Backoff {
-        Backoff { base, max, attempt: 0 }
-    }
-
-    /// The wait before the next attempt.
-    pub fn next(&mut self) -> Duration {
-        let wait = self.base * 2u32.pow(self.attempt);
-        self.attempt += 1;
-        wait.min(self.max)
-    }
-
-    pub fn reset(&mut self) {
-        self.attempt = 0;
-    }
-
-    pub fn attempts(&self) -> u32 {
-        self.attempt
-    }
-
-    pub fn base(&self) -> Duration {
-        self.base
-    }
-
-    pub fn max(&self) -> Duration {
-        self.max
-    }
-
-    pub fn is_fresh(&self) -> bool {
-        self.attempt == 0
-    }
-
-    pub fn exhausted(&self, limit: u32) -> bool {
-        self.attempt >= limit
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn doubles_until_the_cap() {
-        let mut b = Backoff::new(Duration::from_millis(100), Duration::from_secs(1));
-        assert_eq!(b.next(), Duration::from_millis(100));
-        assert_eq!(b.next(), Duration::from_millis(200));
-    }
-}
-";
-
-const NEW_RS: &str = "use std::time::Duration;
-
-/// How long to wait before trying a request again, with jitter so clients spread out.
-pub struct Backoff {
-    base: Duration,
-    max: Duration,
-    attempt: u32,
-    jitter: f32,
-}
-
-impl Backoff {
-    pub fn new(base: Duration, max: Duration) -> Backoff {
-        Backoff { base, max, attempt: 0, jitter: 0.2 }
-    }
-
-    /// The wait before the next attempt, give or take `jitter` of it.
-    pub fn next(&mut self, roll: f32) -> Duration {
-        let wait = self.base.saturating_mul(2u32.saturating_pow(self.attempt));
-        self.attempt += 1;
-        wait.min(self.max).mul_f32(1.0 + self.jitter * (roll * 2.0 - 1.0))
-    }
-
-    pub fn reset(&mut self) {
-        self.attempt = 0;
-    }
-
-    pub fn attempts(&self) -> u32 {
-        self.attempt
-    }
-
-    pub fn base(&self) -> Duration {
-        self.base
-    }
-
-    pub fn max(&self) -> Duration {
-        self.max
-    }
-
-    pub fn is_fresh(&self) -> bool {
-        self.attempt == 0
-    }
-
-    pub fn exhausted(&self, limit: u32) -> bool {
-        self.attempt >= limit
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn doubles_until_the_cap() {
-        let mut b = Backoff::new(Duration::from_millis(100), Duration::from_secs(1));
-        b.jitter = 0.0;
-        assert_eq!(b.next(0.5), Duration::from_millis(100));
-        assert_eq!(b.next(0.5), Duration::from_millis(200));
-    }
-}
-";
-
-const OLD_TS: &str = "export async function fetchWithRetry(url: string, tries = 3): Promise<Response> {
-\tfor (let i = 0; i < tries; i++) {
-\t\tconst res = await fetch(url)
-\t\tif (res.ok) return res
-\t}
-\tthrow new Error(`gave up on ${url}`)
-}
-";
-
-const NEW_TS: &str =
-    "export async function fetchWithRetry(url: string, tries = 3, signal?: AbortSignal): Promise<Response> {
-\tlet last: Response | undefined
-\tfor (let i = 0; i < tries; i++) {
-\t\tlast = await fetch(url, { signal })
-\t\tif (last.ok) return last
-\t\tawait sleep(backoff(i))
-\t}
-\tthrow new Error(`gave up on ${url} after ${tries} tries (${last?.status})`)
-}
-";
-
-const OLD_TOML: &str = "[retry]\nbase_ms = 100\nmax_ms = 1000\n";
-const NEW_TOML: &str = "[retry]\nbase_ms = 100\nmax_ms = 1000\njitter = 0.2\n";
-
-const PATCH: &str = "diff --git a/src/net/retry.rs b/src/net/backoff_policy.rs
-similarity index 100%
-rename from src/net/retry.rs
-rename to src/net/backoff_policy.rs
-diff --git a/assets/retry-curve.png b/assets/retry-curve.png
-new file mode 100644
-index 0000000..4b825dc
-Binary files /dev/null and b/assets/retry-curve.png differ
-";
-
-const LONG_OLD: &str = "pub fn describe(&self) -> String {
-    format!(\"retry {} times starting at {:?}, doubling up to {:?}\", self.limit, self.base, self.max)
-}
-
-pub fn jitter_for(&self, attempt: u32) -> Duration {
-    self.base * 2u32.pow(attempt)
-}
-
-pub fn clamp(&self, wait: Duration) -> Duration {
-    wait.min(self.max)
-}
-";
-const LONG_NEW: &str = "pub fn describe(&self) -> String {
-    format!(\"retry {} times starting at {:?}, doubling up to {:?}, with {:.0}% jitter so clients that failed together spread out when they retry\", self.limit, self.base, self.max, self.jitter * 100.0)
-}
-
-pub fn jitter_for(&self, attempt: u32) -> Duration {
-    let wait = self.base * 2u32.pow(attempt);
-    wait.mul_f64(1.0 + self.jitter * (self.rng.next_f64() - 0.5) * 2.0).min(self.max + self.max.mul_f64(self.jitter))
-}
-
-pub fn clamp(&self, wait: Duration) -> Duration {
-    wait.min(self.max)
-}
-";
+mod git;
 
 struct Review {
     diff: DiffState,
-    composing: Option<LineRange>,
+    message: Option<String>,
     zoom_percent: u16,
 }
 
 fn init() -> Review {
-    let mut files = vec![
-        FileDiff::from_texts("src/net/backoff.rs", OLD_RS, NEW_RS),
-        FileDiff::from_texts("web/fetch.ts", OLD_TS, NEW_TS),
-        FileDiff::from_texts("config/retry.toml", OLD_TOML, NEW_TOML),
-    ];
-    files.extend(parse(PATCH));
-    let mut diff = DiffState::new(files);
-    diff.set_annotations(vec![Annotation::new(0, LineRef::new(Side::New, 19), "jitter")]);
-    Review { diff, composing: None, zoom_percent: 100 }
+    let mut diff = DiffState::new(Vec::new());
+    diff.set_mode(DiffMode::Split);
+    Review { diff, message: Some("Loading Git diff…".into()), zoom_percent: 100 }
+}
+
+fn load_result(s: &mut Review, result: Result<String, String>) {
+    match result {
+        Ok(patch) => {
+            let files = parse(&patch);
+            s.message = if files.is_empty() {
+                Some(if patch.trim().is_empty() {
+                    "No changes for these Git arguments.".into()
+                } else {
+                    "Git returned output that could not be displayed as a patch.".into()
+                })
+            } else {
+                None
+            };
+            s.diff = DiffState::new(files);
+            s.diff.set_mode(DiffMode::Split);
+        }
+        Err(error) => {
+            eprintln!("rune-diff: {error}");
+            s.message = Some(error);
+        }
+    }
 }
 
 fn view(s: &Review, cx: &mut Cx<Review>) -> El {
@@ -224,17 +62,17 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
         .gap(12.0)
         .items_center()
         .fill(k.c.layer_01)
-        .child(text("Add jitter to retry backoff").font(k.ty.ui_medium).color(k.c.text_base))
+        .child(text("Git diff").font(k.ty.ui_medium).color(k.c.text_base))
         .child(text(format!("{files}  +{adds} −{dels}")).font(k.ty.ui).color(k.c.text_muted))
         .child(row().grow(1.0))
         .child(modes.build(&k));
-    let kc = k.clone();
-    let diff = DiffView::new(|s: &Review| &s.diff, |s: &mut Review| &mut s.diff)
-        .annotation(move |s: &Review, a: &Annotation| comment(&kc, s, a))
-        .on_comment(|s: &mut Review, lines, _| s.composing = Some(lines))
-        .build(s, &k);
+    let diff = match &s.message {
+        Some(message) => col().w_full().grow(1.0).padding(24.0)
+            .child(text(message.clone()).font(k.ty.body).color(k.c.text_muted).wrap()),
+        None => DiffView::new(|s: &Review| &s.diff, |s: &mut Review| &mut s.diff).build(s, &k),
+    };
     // Only size changes rebuild this view; scrolling does not.
-    let [width, height] = cx.layout_size("viewport").unwrap_or([900.0, 620.0]);
+    let [width, height] = cx.layout_size("viewport").unwrap_or([1100.0, 720.0]);
     let zoom = s.zoom_percent as f32 / 100.0;
     let content = col()
         .size(width / zoom, height / zoom)
@@ -245,34 +83,6 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
         .child(bar)
         .child(diff);
     col().key("viewport").w_full().h_full().fill(k.c.bg_base).child(content)
-}
-
-/// A review thread under a line.
-fn comment(k: &Kit, _: &Review, a: &Annotation) -> El {
-    let body = "Jitter keeps a crowd of clients that failed together from retrying together. \
-                0.2 matches what the server's rate limiter assumes.";
-    let card = col()
-        .w_full()
-        .padding(12.0)
-        .gap(6.0)
-        .radius(8.0)
-        .fill(k.c.layer_01)
-        .border(1.0, k.c.border_weak)
-        .child(
-            row()
-                .gap(8.0)
-                .items_center()
-                .child(text("Reviewer").font(k.ty.ui_medium).color(k.c.text_base))
-                .child(text(format!("on line {}", a.at.line)).font(k.ty.ui).color(k.c.text_faint)),
-        )
-        .child(text(body).font(k.ty.body).color(k.c.text_base).wrap())
-        .child(
-            row()
-                .gap(8.0)
-                .child(Button::new("Reply").variant(ButtonVariant::Ghost).build(k))
-                .child(Button::new("Resolve").variant(ButtonVariant::Ghost).build(k)),
-        );
-    col().w_full().px(12.0).py(8.0).fill(k.c.bg_base).child(card)
 }
 
 fn on_key(s: &mut Review, ev: &KeyEvent, tx: &mut Tx) -> bool {
@@ -302,18 +112,31 @@ fn zoom_shortcut(current: u16, ev: &KeyEvent) -> Option<u16> {
 }
 
 fn main() {
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if args.len() == 1 && matches!(args[0].to_str(), Some("--help" | "-h")) {
+        println!("Usage: rune-diff [git diff arguments]\n\nExamples:\n  rune-diff\n  rune-diff --cached\n  rune-diff HEAD~1 HEAD -- src/\n\nRun from the repository you want to inspect. Ctrl++ / Ctrl+- zoom; Ctrl+0 resets.\nGit output formatting is controlled by the viewer; Rune tooling flags are disabled.");
+        return;
+    }
     let spec = AppSpec {
-        scenes: &[
-            ("split", |s: &mut Review| s.diff.set_mode(DiffMode::Split)),
-            ("scrolled", |s: &mut Review| {
-                s.diff = DiffState::new(vec![FileDiff::from_texts("src/net/backoff.rs", LONG_OLD, LONG_NEW)])
-            }),
-        ],
         on_key: Some(on_key),
         families: ("Inter", "ui-monospace, Inter"),
-        ..AppSpec::new("Diff", (900.0, 620.0), init, view)
+        ..AppSpec::new("Git diff", (1100.0, 720.0), init, view)
     };
-    App::new(spec).modifier_keys().run();
+    // All process arguments belong to Git, including its path separator.
+    let app = App::new(spec).args(Vec::<String>::new()).modifier_keys();
+    let handle = app.handle();
+    let mut pending = Some(args);
+    app.on_ready(move |_| {
+        let Some(args) = pending.take() else { return };
+        let handle = handle.clone();
+        std::thread::spawn(move || {
+            let result = git::diff(&args, None);
+            handle.update(move |s, tx| {
+                tx.instant();
+                load_result(s, result);
+            });
+        });
+    }).run();
 }
 
 #[cfg(test)]
