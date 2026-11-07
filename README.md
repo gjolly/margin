@@ -1,7 +1,8 @@
 # Rune Diff
 
-A Git diff viewer based on Rune Kit's diff example (MIT). Rune and Rune Kit
-are pinned to the same Git revision; Cargo.lock and flake.lock pin dependencies.
+A native Git diff viewer with optional inline AI conversations and read-only
+code inspection, based on Rune Kit's diff example (MIT). Rune and Rune Kit are
+pinned to the same Git revision; Cargo.lock and flake.lock pin dependencies.
 
 ## Build and run on NixOS
 
@@ -53,6 +54,8 @@ appear below it; send another message in the same composer to continue.
 Drafts and threads survive scrolling and switching views, but are **session only**:
 closing the application discards them. Clicking **+** on the same range reuses its thread.
 
+### Configuration
+
 Create `$XDG_CONFIG_HOME/rdiff/config.json`, or `~/.config/rdiff/config.json` when
 `XDG_CONFIG_HOME` is unset, empty, or relative. Configuration is loaded at startup;
 restart the app after changing configuration or environment variables.
@@ -81,8 +84,9 @@ OpenAI URL above; `/chat/completions` is appended, so include any provider-speci
 base path such as `/v1`. The token is sent with Bearer authentication. This version
 requires a token and an **OpenAI-compatible Chat Completions endpoint with function
 tool support**, even for local providers. Native Responses, Anthropic, and other
-protocols are not supported. Provider compatibility has not been verified against
-live services.
+protocols are not supported. Automated API tests use a local mock server and
+dummy tokens; compatibility depends on the selected provider and model supporting
+the request and tool-calling format.
 
 `headers` accepts additional string-valued HTTP headers. `extra_body` accepts
 arbitrary JSON request fields, for example `{"max_completion_tokens": 4096}` or
@@ -94,10 +98,31 @@ embedded credentials, queries, or fragments. Requests do not follow redirects.
 `timeout_seconds` applies to each HTTP request including its response body and
 accepts 1–3600 seconds. Answers arrive as complete messages rather than streaming.
 
-Each conversation gives the selected code priority, followed by up to 12 patch
-rows on either side, comparison arguments, and a small changed-file overview.
-The AI is instructed to answer your question directly and factually, focusing on
-the selected lines, with wider context available through read-only tools.
+### Context and local code access
+
+A new thread sends the model three messages: general review instructions, the
+review context, and your question. The instructions ask it to help you explore
+and understand the diff, answer directly and factually, and focus on your question
+and selected lines, assuming you already know the project.
+
+The review context contains, in priority order:
+
+1. Old/new file paths, the selected side and line range, and selected patch lines
+   with old/new line numbers and addition/removal markers.
+2. The selection with up to 12 available patch rows before and after it, including
+   hunk headers. These rows come from the displayed patch; omitted unchanged file
+   contents are not automatically loaded.
+3. The Git comparison arguments and selected file's change status.
+4. Other changed files' paths and statuses, capped at 4 KiB; their contents are
+   not automatically included.
+
+Initial review context is capped at 64 KiB and truncation is marked. Follow-ups
+resend that thread's instructions, initial context, questions, answers, tool
+calls, and tool results within the history limit below. Other threads are not
+included. README.md and AGENTS.md are not automatically loaded, though the model
+can read eligible repository documents through tools. Repository content is
+treated as data rather than application instructions.
+
 The AI can call read-only tools to list files, search literal text, and read line
 ranges. Tool access is rooted at the repository root, or the launch directory
 outside Git. Tools read **current local working-tree files**, which can differ
@@ -105,6 +130,8 @@ from staged or historical code in the displayed patch. Ignored files, `.git`,
 and symlink targets outside the eligible code tree are excluded. The AI cannot
 run shell commands or modify files. For `--no-index`, files outside the tool root
 remain available through their displayed patch context only.
+
+### Limits and failures
 
 Limits keep work and retained data bounded: 64 threads per session, four working
 threads at once, one pending turn per thread, 64 KiB initial context, 32 KiB per

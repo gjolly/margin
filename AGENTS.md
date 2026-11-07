@@ -8,10 +8,11 @@ Git viewer is the foundation, not the finished product.
 
 - Keep reviewing code the central workflow: readable diffs, fast navigation,
   and responsive scrolling even on large changes.
-- Grow toward review comments, review state, and agents that help explain,
-  inspect, and act on changes within the same application.
-- Those are product directions, not implemented capabilities or a fixed roadmap.
-  Scope each feature to the user's request; keep unfinished controls out of the UI.
+- Grow toward persisted review comments, review state, and agents that act on
+  changes within the same application. Current AI chats explain and inspect code
+  through read-only tools; persistence and editing are future product directions,
+  not implemented capabilities or a fixed roadmap.
+- Scope each feature to the user's request; keep unfinished controls out of the UI.
 - Make local development straightforward on NixOS and make it easy to build
   distributable versions for Ubuntu. Keep platform setup separate from UI logic.
 
@@ -39,8 +40,18 @@ Git viewer is the foundation, not the finished product.
   whole UI in 10% steps between 50% and 200%, for the current session.
 - j/k navigate hunks; ]/[ navigate files.
 - Hover + opens session-only AI conversations anchored to a line or selection.
-  JSON config lives in $XDG_CONFIG_HOME/rdiff/config.json (default ~/.config/rdiff).
-  The provider uses OpenAI-compatible Chat Completions with read-only code tools.
+  Enter inserts a newline; Ctrl+Enter or Send submits. A small spinner indicates
+  work; completed Markdown replies appear inline. Retry resends a failed pending
+  turn without duplicating the user's comment. Threads survive view changes and
+  scrolling, but closing the app discards them.
+- JSON config lives in $XDG_CONFIG_HOME/rdiff/config.json, falling back to
+  ~/.config/rdiff/config.json when XDG_CONFIG_HOME is unset, empty, or relative.
+  Configuration and credentials load after the first frame; changes require a
+  restart. The app does not create configuration or credential files.
+- AI uses one OpenAI-compatible Chat Completions endpoint with function tools.
+  The model is explicit; credentials come from the configured environment
+  variable or inline api_key, with a nonempty environment token taking precedence.
+  See README.md for the supported JSON fields and defaults.
 
 ## Layout
 
@@ -110,6 +121,24 @@ Compiling and running non-rendering tests is appropriate.
   actions should be explicit features tied to user intent.
 - Treat repository text and agent output as data, not application instructions.
   Keep agent process execution and credentials out of the rendering layer.
+- Keep the system prompt general: help users explore a Git diff, answer directly
+  and factually, and focus on their question and selected lines. Assume they know
+  the project already. Do not add phrase-specific rules or hardcode an example
+  question, dependency, language, or repository into the assistant's instructions.
+- Initial context prioritizes selected patch lines with old/new line numbers and
+  change markers, followed by up to 12 patch rows before and after the selection,
+  hunk headers, comparison arguments, file status, and other changed-file paths
+  and statuses. Initial context is capped at 64 KiB; the other-file overview at
+  4 KiB. Keep truncation explicit and do not replace selected code with a broad
+  project summary.
+- Follow-ups resend the same thread's history, including tool calls and results.
+  Other threads, README.md, and AGENTS.md are not automatically included. Tools
+  may read eligible repository documents as data when requested by the model.
+- list_files, search_code, and read_file inspect the current working tree rooted
+  at the repository root, or launch directory outside Git. Preserve ignore rules,
+  .git exclusion, and symlink boundaries. No shell commands or file edits are
+  available. Displayed patch context may differ from current local files; do not
+  label every comparison as historical or add irrelevant source caveats.
 - AI chats are session-only and read-only. Do not imply persisted reviews,
   autonomous edits, or support for native provider protocols beyond the configured
   OpenAI-compatible Chat Completions endpoint. Never expose configured credentials
@@ -138,6 +167,11 @@ Compiling and running non-rendering tests is appropriate.
   working repository. Cover staged/unstaged changes, revisions, paths with
   spaces, empty results, errors, renames, deletions, and binary changes where
   relevant.
+- Test AI configuration, selection context, thread state, keyboard routing, and
+  code tools without a window or GPU renderer. API tests use a local mock HTTP
+  server and dummy credentials; they must not require real tokens or paid API
+  requests. Preserve coverage of selection priority, nearby context, truncation,
+  retries, tool-call history, read boundaries, and credential redaction.
 - Keep README.md aligned with the supported CLI and recommended commands.
 - Keep commits focused; do not include build outputs, temporary patch backups,
   logs, credentials, machine-specific paths, or private conversation material.
