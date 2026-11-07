@@ -3,7 +3,7 @@
 use crate::{Review, agent::{self, Agent, Answer}, review_context};
 use rune::{AppHandle, El, Key, KeyEvent, TextEdit, Tx, col, row, text};
 use rune_kit::{Button, Kit, Markdown, Spinner, TextArea};
-use rune_kit::diff::{Annotation, DiffState, LineRange, Side};
+use crate::diff::{Annotation, DiffState, LineRange, Side};
 use serde_json::{Value, json};
 
 const THREAD_LIMIT: usize = 64;
@@ -43,7 +43,7 @@ impl Chats {
 
     pub fn open(&mut self, diff: &mut DiffState, mut anchor: LineRange) {
         let file = &diff.files()[anchor.file];
-        let position = |at: rune_kit::diff::LineRef| file.hunks.iter().flat_map(|h| &h.lines)
+        let position = |at: crate::diff::LineRef| file.hunks.iter().flat_map(|h| &h.lines)
             .position(|line| line.number(at.side) == Some(at.line));
         if matches!((position(anchor.start), position(anchor.end)), (Some(a), Some(b)) if a > b) {
             std::mem::swap(&mut anchor.start, &mut anchor.end);
@@ -172,6 +172,7 @@ fn composer(s: &Review, id: usize, k: &Kit) -> El {
         .width(None).auto_grow(2, 6)
         .on_edit(move |s: &mut Review| &mut s.chats.threads[id].draft)
         .on_key(move |s: &mut Review, event: &KeyEvent, tx| {
+            if crate::search::key(s, event, tx) { return true; }
             if event.key != Key::Enter { return false; }
             if event.mods.ctrl && !event.mods.alt && !event.mods.logo {
                 if !tx.key_repeat() { send(s, id, false, tx); }
@@ -186,7 +187,7 @@ fn composer(s: &Review, id: usize, k: &Kit) -> El {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rune_kit::diff::{LineRef, parse};
+    use crate::diff::{LineRef, parse};
 
     fn fixture() -> (Chats, DiffState, LineRange) {
         let diff = DiffState::new(parse("diff --git a/old.rs b/new.rs\n--- a/old.rs\n+++ b/new.rs\n@@ -1 +1 @@\n-deleted historical code\n+new code\n"));
@@ -243,7 +244,7 @@ mod tests {
     fn empty_drafts_limits_and_pending_turns_are_enforced() {
         let (mut chats, mut diff, anchor) = fixture();
         for n in 1..=65 {
-            chats.open(&mut diff, LineRange::line(0, rune_kit::diff::LineRef::new(anchor.start.side, n)));
+            chats.open(&mut diff, LineRange::line(0, crate::diff::LineRef::new(anchor.start.side, n)));
         }
         assert_eq!(chats.threads.len(), 64);
         assert!(chats.notice.is_some());
@@ -274,7 +275,7 @@ mod tests {
         assert!(text.contains("deleted historical code"));
         assert!(text.contains("new code"));
         assert_eq!(diff.annotations()[0].at, end);
-        diff.set_mode(rune_kit::diff::DiffMode::Unified);
+        diff.set_mode(crate::diff::DiffMode::Unified);
         diff.set_collapsed(0, true);
         diff.set_collapsed(0, false);
         assert_eq!(diff.annotations().len(), 1);

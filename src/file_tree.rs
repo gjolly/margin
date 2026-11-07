@@ -3,7 +3,8 @@
 use std::{borrow::Cow, collections::BTreeMap};
 
 use rune::{Cursor, El, GrowthSpec, Phase, ScrollSpec, Tx, col, el, row, text};
-use rune_kit::{Button, Kit, diff::{FileDiff, FileStatus}, natural_cmp};
+use rune_kit::{Button, Kit, natural_cmp};
+use crate::diff::{FileDiff, FileStatus};
 
 use crate::{Review, scrollbar::Scrollbar};
 
@@ -201,7 +202,7 @@ pub fn build(s: &Review, k: &Kit, available: f32) -> El {
 mod tests {
     use super::*;
     use rune::{Env, Key, KeyEvent, Runtime};
-    use rune_kit::diff::{DiffMode, LineRange, LineRef, Side, parse};
+    use crate::diff::{DiffMode, LineRange, LineRef, Side, parse};
 
     fn patch(count: usize, lines: usize) -> String {
         let mut patch = String::new();

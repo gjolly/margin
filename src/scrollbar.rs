@@ -123,7 +123,7 @@ impl Scrollbar {
 mod tests {
     use super::*;
     use rune::{Cx, Env};
-    use rune_kit::diff::{DiffState, DiffView, parse};
+    use crate::diff::{DiffState, DiffView, parse};
 
     struct App {
         diff: DiffState,

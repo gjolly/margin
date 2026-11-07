@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Selection-first context for a line-anchored conversation.
 use crate::code_tools::truncate;
-use rune_kit::diff::{DiffState, Line, LineKind, LineRange, LineRef};
+use crate::diff::{DiffState, Line, LineKind, LineRange, LineRef};
 
 pub const SYSTEM_PROMPT: &str = "You help the user explore and understand a git diff that they \
 are reviewing. The user selected a line from the diff and posted a message. Answer the user's \
@@ -94,7 +94,7 @@ pub fn build(diff: &DiffState, anchor: LineRange, comparison: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rune_kit::diff::{Side, parse};
+    use crate::diff::{Side, parse};
 
     #[test]
     fn lockfile_question_gets_the_selected_dependency_and_its_nearby_entry_first() {

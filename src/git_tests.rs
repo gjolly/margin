@@ -2,7 +2,7 @@
 use super::*;
 use std::fs;
 use std::sync::atomic::{AtomicU64, Ordering};
-use rune_kit::diff::{FileStatus, parse};
+use crate::diff::{FileStatus, parse};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 struct Repo(std::path::PathBuf);

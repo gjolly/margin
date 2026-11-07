@@ -1696,6 +1696,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
 
 [[package]]
+name = "margin"
+version = "0.1.0"
+dependencies = [
+ "ignore",
+ "regex-automata",
+ "regex-syntax",
+ "reqwest",
+ "rune",
+ "rune-kit",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2971,20 +2987,6 @@ dependencies = [
  "xkbcommon",
  "zbus 6.2.1",
  "zeroize",
-]
-
-[[package]]
-name = "margin"
-version = "0.1.0"
-dependencies = [
- "ignore",
- "reqwest",
- "rune",
- "rune-kit",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
 ]
 
 [[package]]

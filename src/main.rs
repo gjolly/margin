@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! A Git diff viewer based on the Rune Kit example (MIT, Copyright 2026 Anomaly).
 use rune::{App, AppSpec, Cx, El, Key, KeyEvent, Tx, col, row, text};
-use rune_kit::diff::{DiffMode, DiffState, DiffView, parse};
+use crate::diff::{DiffMode, DiffState, DiffView, parse};
 use rune_kit::{Kit, SegmentedControl};
 
+mod diff;
+mod search;
 mod git;
 mod config;
 mod code_tools;
@@ -19,6 +21,7 @@ const BASE_UI_SCALE: f32 = 1.3;
 
 struct Review {
     diff: DiffState,
+    search: search::Search,
     files: file_tree::FilePane,
     message: Option<String>,
     summary: String,
@@ -36,7 +39,7 @@ impl Review {
 fn init() -> Review {
     let mut diff = DiffState::new(Vec::new());
     diff.set_mode(DiffMode::Split);
-    Review { diff, files: file_tree::FilePane::new(), message: Some("Loading Git diff…".into()), summary: "0 files  +0 −0".into(), zoom_percent: 100, chats: chat::Chats::new(), scrollbar: scrollbar::Scrollbar::new() }
+    Review { diff, search: search::Search::new(), files: file_tree::FilePane::new(), message: Some("Loading Git diff…".into()), summary: "0 files  +0 −0".into(), zoom_percent: 100, chats: chat::Chats::new(), scrollbar: scrollbar::Scrollbar::new() }
 }
 
 fn load_result(s: &mut Review, result: Result<String, String>) {
@@ -58,6 +61,7 @@ fn load_result(s: &mut Review, result: Result<String, String>) {
             let noun = if count == 1 { "file" } else { "files" };
             s.summary = format!("{count} {noun}  +{adds} −{dels}");
             let files = s.files.load(files);
+            s.search.load(search::Snapshot::new(&files));
             s.diff = DiffState::new(files);
             s.diff.set_mode(DiffMode::Split);
         }
@@ -98,6 +102,7 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
             let kit = k.clone();
             DiffView::new(|s: &Review| &s.diff, |s: &mut Review| &mut s.diff)
                 .key("review-diff")
+                .search(s.search.highlights())
                 .on_visible_file(|s, file| s.files.follow(file))
                 .on_comment(|s: &mut Review, lines, tx| {
                     tx.instant();
@@ -111,7 +116,7 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
     // Only size changes rebuild this view; scrolling does not.
     let [width, height] = cx.layout_size("viewport").unwrap_or([1100.0, 720.0]);
     let zoom = s.ui_scale();
-    let content = col()
+    let mut content = col()
         .size(width / zoom, height / zoom)
         .absolute(0.0, 0.0)
         .scale(zoom)
@@ -121,6 +126,11 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
         .child(row().key("review-body").w_full().grow(1.0).min_h(0.0)
             .child(file_tree::build(s, &k, width / zoom))
             .child(col().key("diff-slot").grow(1.0).min_w(0.0).h_full().child(diff)));
+    if s.search.open {
+        let available = width / zoom;
+        let popup_width = 420.0_f32.min((available - 16.0).max(0.0));
+        content = content.child(search::popup(s, &k, available).absolute((available - popup_width - 8.0).max(0.0), 56.0));
+    }
     col().key("viewport").w_full().h_full().fill(k.c.bg_base).child(content)
 }
 
@@ -130,6 +140,8 @@ fn on_key(s: &mut Review, ev: &KeyEvent, tx: &mut Tx) -> bool {
         tx.instant();
         return true;
     }
+    if search::key(s, ev, tx) { return true; }
+    if s.search.input.focused || s.chats.threads.iter().any(|t| t.draft.focused) { return false; }
     let handled = s.diff.key(ev, tx);
     if handled { s.files.follow(s.diff.visible_file()); }
     handled
@@ -174,6 +186,11 @@ fn main() {
     })
     .on_ready(move |_| {
         let Some(args) = pending.take() else { return };
+        let search_handle = handle.clone();
+        handle.update(move |s, tx| {
+            s.search.handle = Some(search_handle);
+            if s.search.open { search::changed(s, tx); }
+        });
         let handle = handle.clone();
         std::thread::spawn(move || {
             let result = git::diff(&args, None);
@@ -190,6 +207,7 @@ fn main() {
                     Ok(agent) => { s.chats.agent = Some(agent); s.chats.setup.clear(); }
                     Err(error) => s.chats.setup = error,
                 }
+                if s.search.open { search::changed(s, tx); }
             });
         });
     }).run();

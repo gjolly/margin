@@ -95,6 +95,14 @@ Ctrl++ (or Ctrl+=) enlarges the whole UI; Ctrl+- shrinks it.
 Zoom changes in 10% steps from 50% to 200%; Ctrl+0 resets to 100%.
 The default 100% size includes a 30% enlargement over Rune Kit’s base sizing.
 Zoom lasts for the current session. j/k navigate hunks; ]/[ navigate files.
+Ctrl+F or `/` opens a floating search field at the top right. Search ignores case
+and highlights literal text matches in added, removed, and context lines across
+the loaded diff. Enter / Shift+Enter or the arrow buttons jump between matches,
+wrapping at either end. Context lines count once even in split view. Clicking
+**×** or pressing **Escape** closes search and clears its highlights; reopening
+retains the query. `/` types normally in search and AI chat inputs. Filenames,
+headers, AI chats, and content outside the loaded patch are not searched.
+
 The scrollbar on the right shows your position when the diff overflows vertically.
 Drag its thumb or click the track to move through the diff.
 
@@ -293,7 +301,10 @@ Margin is distributed in the hope that it will be useful, but WITHOUT ANY
 WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
 PARTICULAR PURPOSE. See [LICENSE](LICENSE) for the full GNU General Public License.
 
-Margin incorporates code adapted from Rune Kit's MIT-licensed diff example.
+Margin incorporates code adapted from Rune Kit's MIT-licensed diff example and
+diff component. The local component in `src/diff` derives from Rune revision
+`d03349e25189ce1edc8c26ada6bf6d4aac72c826` and adds search decorations; the
+remaining Rune and Rune Kit dependencies stay pinned to that same revision.
 The upstream copyright and permission notice are preserved in
 [LICENSE-MIT](LICENSE-MIT) for that code; this does not offer Margin as a whole
 under MIT. Dependencies retain their respective licenses.
