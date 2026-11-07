@@ -71,10 +71,22 @@ jobs:
           PY
           '
           done
+      - name: Build corresponding source archive
+        run: |
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
+          source_root=$(mktemp -d)
+          git archive --prefix="margin-$version/" HEAD | tar -x -C "$source_root"
+          (
+            cd "$source_root/margin-$version"
+            mkdir -p .cargo
+            cargo vendor --locked vendor > .cargo/config.toml
+            CARGO_HOME="$source_root/cargo-home" cargo metadata --locked --offline --format-version 1 > /dev/null
+          )
+          tar -czf "target/debian/margin-$version-source.tar.gz" -C "$source_root" "margin-$version"
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release create "$GITHUB_REF_NAME" target/debian/*.deb \
+          gh release create "$GITHUB_REF_NAME" target/debian/*.deb target/debian/*-source.tar.gz \
             --verify-tag --title "Margin $GITHUB_REF_NAME" --generate-notes

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 use super::*;
 use crate::config::test_connection;
 use std::{io::{Read, Write}, net::TcpListener, sync::Mutex, thread, time::Duration};

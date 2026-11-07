@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Selection-first context for a line-anchored conversation.
 use crate::code_tools::truncate;
 use rune_kit::diff::{DiffState, Line, LineKind, LineRange, LineRef};

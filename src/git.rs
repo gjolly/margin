@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Collect a plain Git patch without invoking a shell or external diff helpers.
 use std::ffi::OsString;
 use std::path::Path;

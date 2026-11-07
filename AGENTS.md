@@ -19,7 +19,7 @@ Git viewer is the foundation, not the finished product.
 ## Current application
 
 - This is a standalone app adapted from Rune Kit's MIT-licensed diff example.
-  Preserve the upstream attribution in LICENSE.
+  Margin is GPL-3.0-or-later; preserve the upstream MIT attribution in LICENSE-MIT.
 - Rune and Rune Kit are Git dependencies pinned to the same exact revision.
   Keep their revisions aligned. Update them deliberately, with Cargo.lock.
   Do not introduce a dependency on a developer's local Rune checkout.
@@ -160,7 +160,8 @@ Compiling and running non-rendering tests is appropriate.
 - Ubuntu distribution uses a native Ubuntu 26.04 amd64 build and a binary-only
   .deb. The workflow runs only on vX.Y.Z tags matching Cargo.toml, runs
   non-rendering tests, checks installation and library loading in a clean Podman
-  container, then publishes a GitHub release with the .deb attached. Keep dlopen
+  container, then publishes a GitHub release with the .deb and a corresponding
+  source archive (including vendored Rust dependencies) attached. Keep dlopen
   libraries explicitly declared alongside dpkg-shlibdeps results, with complete
   Wayland/X11 alternatives and checks that neither backend pulls in the other.
   Desktop/GPU validation remains manual.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! OpenAI-compatible tool loop, isolated from presentation and credentials UI.
 use crate::{code_tools::{self, CodeTools}, config::Connection, usage::TurnStats};
 use serde_json::{Value, json};

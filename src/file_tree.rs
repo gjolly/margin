@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Cached, always-expanded changed-file outline and its resizable pane.
 use std::{borrow::Cow, collections::BTreeMap};
 

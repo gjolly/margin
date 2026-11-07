@@ -23,7 +23,8 @@ trap 'rm -rf -- "$work_dir"' EXIT
 package_dir=$work_dir/package
 install -Dm755 "$binary" "$package_dir/usr/bin/margin"
 strip --strip-unneeded "$package_dir/usr/bin/margin"
-install -Dm644 "$project_dir/LICENSE" "$package_dir/usr/share/doc/margin/copyright"
+install -d "$package_dir/usr/share/doc/margin"
+cat "$project_dir/LICENSE" "$project_dir/LICENSE-MIT" > "$package_dir/usr/share/doc/margin/copyright"
 install -Dm644 "$project_dir/README.md" "$package_dir/usr/share/doc/margin/README.md"
 
 # dpkg-shlibdeps requires package metadata even for a binary-only build.

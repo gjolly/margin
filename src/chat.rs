@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Session-owned conversations and inline presentation; workers own all I/O.
 use crate::{Review, agent::{self, Agent, Answer}, review_context};
 use rune::{AppHandle, El, Key, KeyEvent, TextEdit, Tx, col, row, text};

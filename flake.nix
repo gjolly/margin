@@ -22,7 +22,7 @@
             version = manifest.package.version;
             src = pkgs.lib.fileset.toSource {
               root = ./.;
-              fileset = pkgs.lib.fileset.unions [ ./Cargo.toml ./Cargo.lock ./src ./LICENSE ];
+              fileset = pkgs.lib.fileset.unions [ ./Cargo.toml ./Cargo.lock ./src ./LICENSE ./LICENSE-MIT ];
             };
             cargoLock = {
               lockFile = ./Cargo.lock;
@@ -34,6 +34,7 @@
             nativeCheckInputs = [ pkgs.git ];
             postInstall = ''
               install -Dm644 LICENSE $out/share/licenses/margin/LICENSE
+              install -Dm644 LICENSE-MIT $out/share/licenses/margin/LICENSE-MIT
               wrapProgram $out/bin/margin \
                 --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.git ]} \
                 --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath (runtimeLibraries pkgs)}:/run/opengl-driver/lib
@@ -41,7 +42,7 @@
             meta = {
               description = "Native Git diff viewer with inline AI conversations";
               homepage = "https://github.com/gjolly/margin";
-              license = pkgs.lib.licenses.mit;
+              license = pkgs.lib.licenses.gpl3Plus;
               platforms = systems;
               mainProgram = "margin";
             };

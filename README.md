@@ -242,8 +242,15 @@ runs only when a version tag such as `v0.1.0` is pushed. The tag must match
 the version in Cargo.toml. It uses Ubuntu 26.04 amd64 and Rust 1.99.0, runs
 `cargo test --locked`, builds with `cargo build --release --locked`, and checks
 installation before creating a GitHub release with generated notes and attaching
-the `.deb`. A tag `v0.1.0` produces `margin_0.1.0-1_amd64.deb`.
-No source package is built.
+the `.deb` and a corresponding source archive with vendored Rust dependencies.
+A tag `v0.1.0` produces `margin_0.1.0-1_amd64.deb` and
+`margin-0.1.0-source.tar.gz`. No Debian source package is built.
+
+To build from a release source archive, extract it and run
+`cargo build --release --locked --offline` inside its directory, with the native
+build dependencies described below installed. The included `.cargo/config.toml`
+uses the bundled dependency sources. Keep this source archive available alongside
+the binary when redistributing a release.
 
 To publish, update Cargo.toml and Cargo.lock to the release version, commit the
 changes, and push the corresponding tag:
@@ -275,4 +282,18 @@ Based on Rune Kit's MIT-licensed diff example, with optional inline AI
 conversations and read-only code inspection. Rune and Rune Kit are pinned to the
 same Git revision; Cargo.lock and flake.lock pin dependencies.
 
-MIT; see LICENSE for the upstream attribution retained with the example.
+Copyright (c) 2026 Margin contributors.
+
+Margin is free software: you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later version
+(`GPL-3.0-or-later`).
+
+Margin is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See [LICENSE](LICENSE) for the full GNU General Public License.
+
+Margin incorporates code adapted from Rune Kit's MIT-licensed diff example.
+The upstream copyright and permission notice are preserved in
+[LICENSE-MIT](LICENSE-MIT) for that code; this does not offer Margin as a whole
+under MIT. Dependencies retain their respective licenses.

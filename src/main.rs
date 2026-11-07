@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! A Git diff viewer based on the Rune Kit example (MIT, Copyright 2026 Anomaly).
 use rune::{App, AppSpec, Cx, El, Key, KeyEvent, Tx, col, row, text};
 use rune_kit::diff::{DiffMode, DiffState, DiffView, parse};

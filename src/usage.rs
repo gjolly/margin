@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Provider-reported usage for one successful turn, including tool round trips.
 use serde_json::Value;
 use std::time::Duration;

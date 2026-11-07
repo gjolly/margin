@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! App-side scrollbars for independently scrolling viewports.
 use std::cell::Cell;
 use std::rc::Rc;

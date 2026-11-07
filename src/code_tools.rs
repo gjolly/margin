@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Bounded, read-only working-tree inspection. No model-supplied commands.
 use ignore::WalkBuilder;
 use serde::Deserialize;
