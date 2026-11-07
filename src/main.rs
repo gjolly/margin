@@ -4,18 +4,23 @@ use rune_kit::diff::{DiffMode, DiffState, DiffView, parse};
 use rune_kit::{Kit, SegmentedControl};
 
 mod git;
+mod config;
+mod code_tools;
+mod agent;
+mod chat;
 
 struct Review {
     diff: DiffState,
     message: Option<String>,
     summary: String,
     zoom_percent: u16,
+    chats: chat::Chats,
 }
 
 fn init() -> Review {
     let mut diff = DiffState::new(Vec::new());
     diff.set_mode(DiffMode::Split);
-    Review { diff, message: Some("Loading Git diff…".into()), summary: "0 files  +0 −0".into(), zoom_percent: 100 }
+    Review { diff, message: Some("Loading Git diff…".into()), summary: "0 files  +0 −0".into(), zoom_percent: 100, chats: chat::Chats::new() }
 }
 
 fn load_result(s: &mut Review, result: Result<String, String>) {
@@ -65,12 +70,22 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
         .fill(k.c.layer_01)
         .child(text("Git diff").font(k.ty.ui_medium).color(k.c.text_base))
         .child(text(s.summary.clone()).font(k.ty.ui).color(k.c.text_muted))
+        .child(text(s.chats.notice.clone().unwrap_or_default()).font(k.ty.ui).color(k.c.text_muted).wrap())
         .child(row().grow(1.0))
         .child(modes.build(&k));
     let diff = match &s.message {
         Some(message) => col().w_full().grow(1.0).padding(24.0)
             .child(text(message.clone()).font(k.ty.body).color(k.c.text_muted).wrap()),
-        None => DiffView::new(|s: &Review| &s.diff, |s: &mut Review| &mut s.diff).build(s, &k),
+        None => {
+            let kit = k.clone();
+            DiffView::new(|s: &Review| &s.diff, |s: &mut Review| &mut s.diff)
+                .on_comment(|s: &mut Review, lines, tx| {
+                    tx.instant();
+                    s.chats.open(&mut s.diff, lines);
+                })
+                .annotation(move |s, annotation| chat::annotation(s, annotation, &kit))
+                .build(s, &k)
+        },
     };
     // Only size changes rebuild this view; scrolling does not.
     let [width, height] = cx.layout_size("viewport").unwrap_or([1100.0, 720.0]);
@@ -132,9 +147,19 @@ fn main() {
         let handle = handle.clone();
         std::thread::spawn(move || {
             let result = git::diff(&args, None);
+            let comparison = format!("{args:?}");
+            let ai = std::env::current_dir().map_err(|_| "Cannot locate the current code directory.".to_owned())
+                .and_then(|cwd| config::load().and_then(|config| agent::Agent::start(config, code_tools::root(&cwd))));
+            let chat_handle = handle.clone();
             handle.update(move |s, tx| {
                 tx.instant();
                 load_result(s, result);
+                s.chats.comparison = comparison;
+                s.chats.handle = Some(chat_handle);
+                match ai {
+                    Ok(agent) => { s.chats.agent = Some(agent); s.chats.setup.clear(); }
+                    Err(error) => s.chats.setup = error,
+                }
             });
         });
     }).run();

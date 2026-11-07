@@ -46,3 +46,18 @@ fn git_results_replace_loading_with_split_view_or_a_message() {
     load_result(&mut state, Err("Invalid revision".into()));
     assert_eq!(state.message.as_deref(), Some("Invalid revision"));
 }
+
+#[test]
+fn missing_ai_setup_keeps_drafts_and_zoom_still_works() {
+    let mut state = init();
+    load_result(&mut state, Ok("diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-old\n+new\n".into()));
+    let anchor = rune_kit::diff::LineRange::line(0, rune_kit::diff::LineRef::new(rune_kit::diff::Side::New, 1));
+    state.chats.open(&mut state.diff, anchor);
+    state.chats.threads[0].draft.replace_text("j k [ ]");
+    state.chats.threads[0].draft.focused = true;
+    chat::send(&mut state, 0, false, &mut Tx::default());
+    assert_eq!(state.chats.threads[0].draft.text, "j k [ ]");
+    assert!(state.chats.threads[0].posts.is_empty());
+    assert!(on_key(&mut state, &ctrl(Key::Command('+')), &mut Tx::default()));
+    assert_eq!(state.zoom_percent, 110);
+}

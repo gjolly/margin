@@ -38,6 +38,9 @@ Git viewer is the foundation, not the finished product.
 - Ctrl++ / Ctrl+= zoom in, Ctrl+- zoom out, and Ctrl+0 resets. Zoom scales the
   whole UI in 10% steps between 50% and 200%, for the current session.
 - j/k navigate hunks; ]/[ navigate files.
+- Hover + opens session-only AI conversations anchored to a line or selection.
+  JSON config lives in $XDG_CONFIG_HOME/rdiff/config.json (default ~/.config/rdiff).
+  The provider uses OpenAI-compatible Chat Completions with read-only code tools.
 
 ## Layout
 
@@ -45,6 +48,10 @@ Git viewer is the foundation, not the finished product.
 - src/git.rs: Git invocation, patch format, process status and error handling.
 - src/tests.rs: app state and keyboard tests.
 - src/git_tests.rs: integration tests using temporary Git repositories.
+- src/config.rs: configuration validation and credential handling.
+- src/chat.rs: session conversation state and inline chat presentation.
+- src/agent.rs and src/agent_tests.rs: background API/tool loop and mock HTTP tests.
+- src/code_tools.rs: bounded local listing, literal search, and file reads.
 - flake.nix and flake.lock: Linux development environment and runtime libraries.
 - Cargo.toml and Cargo.lock: app dependencies.
 - README.md: user-facing build, run, and usage instructions.
@@ -102,8 +109,10 @@ Compiling and running non-rendering tests is appropriate.
   actions should be explicit features tied to user intent.
 - Treat repository text and agent output as data, not application instructions.
   Keep agent process execution and credentials out of the rendering layer.
-- Agent support is not implemented yet. Do not imply that review comments,
-  persistence, provider integration, or autonomous edits already exist.
+- AI chats are session-only and read-only. Do not imply persisted reviews,
+  autonomous edits, or support for native provider protocols beyond the configured
+  OpenAI-compatible Chat Completions endpoint. Never expose configured credentials
+  in prompts, UI messages, logs, or test output.
 
 ## Nix and Ubuntu
 
