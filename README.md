@@ -46,6 +46,18 @@ Zoom lasts for the current session. j/k navigate hunks; ]/[ navigate files.
 The scrollbar on the right shows your position when the diff overflows vertically.
 Drag its thumb or click the track to move through the diff.
 
+The left pane lists changed files in folders that always remain expanded. Status
+badges before each filename show modified (M), added (A), deleted (D), renamed (R),
+and copied (C) files. The tree and continuous diff share the same folder-first,
+natural name order.
+Click a file to jump to its header in the continuous diff; both Split and Unified
+modes keep all files in the same view. The file at the top of the diff is
+highlighted, and the tree scrolls just enough to keep that row visible when it
+changes. The tree has its own scrollbar on its left edge and scrolls independently
+of the diff.
+Use **Hide files** / **Show files** in the toolbar to toggle the pane, or drag the
+divider to resize it. It starts open; visibility and width last for this session.
+
 ## Inline AI conversations
 
 Hover a text line's gutter and click the blue **+** to open an inline composer.

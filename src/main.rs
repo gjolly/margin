@@ -11,9 +11,11 @@ mod usage;
 mod chat;
 mod review_context;
 mod scrollbar;
+mod file_tree;
 
 struct Review {
     diff: DiffState,
+    files: file_tree::FilePane,
     message: Option<String>,
     summary: String,
     zoom_percent: u16,
@@ -24,7 +26,7 @@ struct Review {
 fn init() -> Review {
     let mut diff = DiffState::new(Vec::new());
     diff.set_mode(DiffMode::Split);
-    Review { diff, message: Some("Loading Git diff…".into()), summary: "0 files  +0 −0".into(), zoom_percent: 100, chats: chat::Chats::new(), scrollbar: scrollbar::Scrollbar::new() }
+    Review { diff, files: file_tree::FilePane::new(), message: Some("Loading Git diff…".into()), summary: "0 files  +0 −0".into(), zoom_percent: 100, chats: chat::Chats::new(), scrollbar: scrollbar::Scrollbar::new() }
 }
 
 fn load_result(s: &mut Review, result: Result<String, String>) {
@@ -45,6 +47,7 @@ fn load_result(s: &mut Review, result: Result<String, String>) {
             let count = files.len();
             let noun = if count == 1 { "file" } else { "files" };
             s.summary = format!("{count} {noun}  +{adds} −{dels}");
+            let files = s.files.load(files);
             s.diff = DiffState::new(files);
             s.diff.set_mode(DiffMode::Split);
         }
@@ -76,6 +79,7 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
         .child(text(s.summary.clone()).font(k.ty.ui).color(k.c.text_muted))
         .child(text(s.chats.notice.clone().unwrap_or_default()).font(k.ty.ui).color(k.c.text_muted).wrap())
         .child(row().grow(1.0))
+        .child(file_tree::toggle_button(s, &k))
         .child(modes.build(&k));
     let diff = match &s.message {
         Some(message) => col().w_full().grow(1.0).padding(24.0)
@@ -84,6 +88,7 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
             let kit = k.clone();
             DiffView::new(|s: &Review| &s.diff, |s: &mut Review| &mut s.diff)
                 .key("review-diff")
+                .on_visible_file(|s, file| s.files.follow(file))
                 .on_comment(|s: &mut Review, lines, tx| {
                     tx.instant();
                     s.chats.open(&mut s.diff, lines);
@@ -103,7 +108,9 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
         .origin(0.0, 0.0)
         .fill(k.c.bg_base)
         .child(bar)
-        .child(diff);
+        .child(row().key("review-body").w_full().grow(1.0).min_h(0.0)
+            .child(file_tree::build(s, &k, width / zoom))
+            .child(col().key("diff-slot").grow(1.0).min_w(0.0).h_full().child(diff)));
     col().key("viewport").w_full().h_full().fill(k.c.bg_base).child(content)
 }
 
@@ -113,7 +120,9 @@ fn on_key(s: &mut Review, ev: &KeyEvent, tx: &mut Tx) -> bool {
         tx.instant();
         return true;
     }
-    s.diff.key(ev, tx)
+    let handled = s.diff.key(ev, tx);
+    if handled { s.files.follow(s.diff.visible_file()); }
+    handled
 }
 
 fn zoom_shortcut(current: u16, ev: &KeyEvent) -> Option<u16> {
@@ -148,7 +157,11 @@ fn main() {
     let app = App::new(spec).args(Vec::<String>::new()).modifier_keys();
     let handle = app.handle();
     let mut pending = Some(args);
-    app.on_frame_drawn(|rt| rt.state.scrollbar.follow(rt, rt.state.zoom_percent as f32 / 100.0))
+    app.on_frame_drawn(|rt| {
+        let zoom = rt.state.zoom_percent as f32 / 100.0;
+        rt.state.scrollbar.follow(rt, zoom);
+        rt.state.files.scrollbar.follow(rt, zoom);
+    })
     .on_ready(move |_| {
         let Some(args) = pending.take() else { return };
         let handle = handle.clone();

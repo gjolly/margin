@@ -1,4 +1,4 @@
-//! App-side scrollbar for Rune Kit's private diff viewport.
+//! App-side scrollbars for independently scrolling viewports.
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -36,6 +36,11 @@ impl Position {
 
 #[derive(Clone)]
 pub struct Scrollbar {
+    viewport: &'static str,
+    scroll_key: &'static str,
+    area_key: &'static str,
+    bar_key: &'static str,
+    left: bool,
     position: Rc<Cell<Position>>,
     rect: Live<[f32; 4]>,
     thumb: Live<[f32; 4]>,
@@ -43,24 +48,35 @@ pub struct Scrollbar {
 
 impl Scrollbar {
     pub fn new() -> Self {
+        Self::for_viewport(VIEWPORT, "scroll", "diff-area", "diff-scrollbar")
+    }
+
+    pub fn for_viewport(viewport: &'static str, scroll_key: &'static str, area_key: &'static str, bar_key: &'static str) -> Self {
         Self {
+            viewport, scroll_key, area_key, bar_key, left: false,
             position: Rc::new(Cell::new(Position::default())),
             rect: Live::new([0.0; 4]),
             thumb: Live::new([0.0; 4]),
         }
     }
 
+    pub fn on_left(mut self) -> Self {
+        self.left = true;
+        self
+    }
+
     /// Runs only after a drawn frame. `presented` reads geometry without subscribing
-    /// the view to changing scroll offsets. The diff is the first scroll viewport in
-    /// the app tree, before any nested chat content, so these Kit keys identify it.
+    /// the view to changing scroll offsets. Each viewport has a unique element key.
     /// Live values request a frame only when their geometry actually changes.
     pub fn follow<S: 'static>(&self, rt: &Runtime<S>, zoom: f32) {
         // Accessibility exposes the viewport's actual scroll range, including growth
         // animation and virtual spacers. The list's layout height alone does not.
         let tree = rt.accessibility_tree();
-        let scroll = tree.nodes.iter().find_map(|(_, node)|
-            Some((node.scroll_y()? as f32, node.scroll_y_max()? as f32)));
-        let geometry = rt.presented("scroll").zip(scroll);
+        let scroll = tree.nodes.iter().find_map(|(_, node)| {
+            if node.author_id() != Some(self.scroll_key) { return None; }
+            Some((node.scroll_y()? as f32, node.scroll_y_max()? as f32))
+        });
+        let geometry = rt.presented(self.scroll_key).zip(scroll);
         let Some((([_, _, width, height], _), (offset, max))) = geometry else {
             self.rect.snap([0.0; 4]);
             self.position.set(Position::default());
@@ -71,15 +87,17 @@ impl Scrollbar {
         let position = Position { height, max, offset };
         self.position.set(position);
         let (top, length) = position.thumb();
-        self.rect.snap([width, 0.0, WIDTH, if max > 0.5 { height } else { 0.0 }]);
+        self.rect.snap([if self.left { 0.0 } else { width }, 0.0, WIDTH, if max > 0.5 { height } else { 0.0 }]);
         self.thumb.snap([4.0, top, 6.0, length]);
     }
 
-    pub fn build(&self, diff: El, k: &Kit) -> El {
+    pub fn build(&self, content: El, k: &Kit) -> El {
         let position = self.position.clone();
-        col().key("diff-area").w_full().grow(1.0).min_h(0.0)
-            .child(diff.pr(WIDTH))
-            .child(el().key("diff-scrollbar").absolute(0.0, 0.0)
+        let viewport = self.viewport;
+        let content = if self.left { content.pl(WIDTH) } else { content.pr(WIDTH) };
+        col().key(self.area_key).w_full().grow(1.0).min_h(0.0)
+            .child(content)
+            .child(el().key(self.bar_key).absolute(0.0, 0.0)
                 .live_rect(&self.rect).fill(k.c.layer_01).cursor(Cursor::Pointer)
                 .a11y_hidden()
                 .on_drag_any(move |drag, tx| {
@@ -93,7 +111,7 @@ impl Scrollbar {
                             drag.y - top
                         } else { length / 2.0 };
                     }
-                    tx.scroll_to_y(VIEWPORT, at.offset_at(drag.y - drag.data));
+                    tx.scroll_to_y(viewport, at.offset_at(drag.y - drag.data));
                 })
                 .child(el().key("thumb").absolute(0.0, 0.0).live_rect(&self.thumb)
                     .radius(3.0).fill(k.c.text_muted)))
