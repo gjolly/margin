@@ -2,6 +2,8 @@
 
 A native Git diff and review application built with Rune and Rune Kit.
 
+![Margin application screenshot](docs/images/screenshot.png)
+
 ## Install on Ubuntu 26.04
 
 Download the amd64 `.deb` from the
