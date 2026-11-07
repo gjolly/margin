@@ -166,6 +166,7 @@ pub fn build(s: &Review, k: &Kit, available: f32) -> El {
                     .truncate().grow(1.0).min_w(0.0))
             }).virtual_rows_version(s.files.revision);
     let viewport = col().key("tree-scroll").w_full().grow(1.0).min_h(0.0)
+        .on_wheel(crate::on_zoom_wheel)
         .scroll(ScrollSpec { stick_bottom: false }).child(if s.files.rows.is_empty() {
             col().w_full().padding(10.0).child(text(s.message.clone().unwrap_or_default())
                 .font(k.ty.ui).color(k.c.text_muted).wrap())
@@ -228,6 +229,35 @@ mod tests {
             let zoom = rt.state.ui_scale();
             rt.state.scrollbar.follow(rt, zoom);
             rt.state.files.scrollbar.follow(rt, zoom);
+        }
+    }
+
+    #[test]
+    fn ctrl_wheel_zooms_over_each_pane_and_plain_wheel_scrolls() {
+        use rune::{Mods, WheelEvent};
+        for key in ["scroll", "tree-scroll", "bar"] {
+            let mut rt = app(40, 40, 100);
+            let ([x, y, width, height], _) = rt.presented(key).expect("visible pane");
+            let (x, y) = (x + width * 0.5, y + height * 0.5);
+            let mods = Mods { ctrl: true, ..Mods::default() };
+            rt.wheel_event(WheelEvent::new(0.0, -40.0).at(x, y).mods(mods));
+            settle(&mut rt);
+            assert_eq!(rt.state.zoom_percent, 90, "zoom over {key}");
+            let tree = rt.accessibility_tree();
+            for (_, node) in &tree.nodes {
+                if matches!(node.author_id(), Some("scroll" | "tree-scroll")) {
+                    assert_eq!(node.scroll_y(), Some(0.0), "zoom also scrolled {key}");
+                }
+            }
+            if key != "bar" {
+                let ([x, y, width, height], _) = rt.presented(key).unwrap();
+                rt.wheel_event(WheelEvent::new(0.0, -40.0).at(x + width * 0.5, y + height * 0.5));
+                settle(&mut rt);
+                assert_eq!(rt.state.zoom_percent, 90);
+                let tree = rt.accessibility_tree();
+                let node = tree.nodes.iter().find(|(_, n)| n.author_id() == Some(key)).unwrap();
+                assert!(node.1.scroll_y().unwrap() > 0.0, "plain wheel did not scroll {key}");
+            }
         }
     }
 

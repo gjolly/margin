@@ -7,6 +7,44 @@ fn ctrl(key: Key) -> KeyEvent {
 }
 
 #[test]
+fn ctrl_wheel_zoom_steps_are_bounded_and_consumed() {
+    let mut state = init();
+    let mut tx = Tx::default();
+    let mods = ctrl(Key::Command('+')).mods;
+    for (dy, expected) in [(40.0, 110), (-40.0, 100), (0.5, 110), (-0.5, 100)] {
+        assert!(on_zoom_wheel(&mut state, WheelEvent::new(0.0, dy).mods(mods), &mut tx));
+        assert_eq!(state.zoom_percent, expected);
+    }
+    for (current, dy) in [(200, 40.0), (50, -40.0)] {
+        state.zoom_percent = current;
+        assert!(on_zoom_wheel(&mut state, WheelEvent::new(0.0, dy).mods(mods), &mut tx));
+        assert_eq!(state.zoom_percent, current);
+    }
+    state.zoom_percent = 100;
+    let shift = Mods { shift: true, ..mods };
+    assert!(on_zoom_wheel(&mut state, WheelEvent::new(0.0, 40.0).mods(shift), &mut tx));
+    assert_eq!(state.zoom_percent, 110);
+}
+
+#[test]
+fn unrelated_wheel_events_leave_zoom_unchanged() {
+    let mut state = init();
+    let mods = ctrl(Key::Command('+')).mods;
+    let events = [
+        WheelEvent::new(0.0, 40.0),
+        WheelEvent::new(0.0, 40.0).mods(Mods { alt: true, ..mods }),
+        WheelEvent::new(0.0, 40.0).mods(Mods { logo: true, ..mods }),
+        WheelEvent::new(40.0, 0.0).mods(mods),
+        WheelEvent::new(0.0, 0.0).mods(mods),
+        WheelEvent::new(0.0, f32::NAN).mods(mods),
+    ];
+    for event in events {
+        assert!(!on_zoom_wheel(&mut state, event, &mut Tx::default()));
+        assert_eq!(state.zoom_percent, 100);
+    }
+}
+
+#[test]
 fn zoom_keys_handle_command_and_text_events() {
     for key in [Key::Command('+'), Key::Command('='), Key::Text("+".into())] {
         assert_eq!(zoom_shortcut(100, &ctrl(key)), Some(110));

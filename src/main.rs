@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! A Git diff viewer based on the Rune Kit example (MIT, Copyright 2026 Anomaly).
-use rune::{App, AppSpec, Cx, El, Key, KeyEvent, Tx, col, row, text};
+use rune::{App, AppSpec, Cx, El, Key, KeyEvent, Tx, WheelEvent, col, row, text};
 use crate::diff::{DiffMode, DiffState, DiffView, parse};
 use rune_kit::{Kit, SegmentedControl};
 
@@ -102,6 +102,7 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
             let kit = k.clone();
             DiffView::new(|s: &Review| &s.diff, |s: &mut Review| &mut s.diff)
                 .key("review-diff")
+                .on_wheel(on_zoom_wheel)
                 .search(s.search.highlights())
                 .on_visible_file(|s, file| s.files.follow(file))
                 .on_comment(|s: &mut Review, lines, tx| {
@@ -132,7 +133,20 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
         let popup_width = 420.0_f32.min((available - 16.0).max(0.0));
         content = content.child(search::popup(s, &k, available).absolute((available - popup_width - 8.0).max(0.0), 56.0));
     }
-    col().key("viewport").w_full().h_full().fill(k.c.bg_base).child(content)
+    col().key("viewport").w_full().h_full().fill(k.c.bg_base).on_wheel(on_zoom_wheel).child(content)
+}
+
+fn on_zoom_wheel(s: &mut Review, ev: WheelEvent, tx: &mut Tx) -> bool {
+    if !ev.mods.ctrl || ev.mods.alt || ev.mods.logo || !ev.dy.is_finite() || ev.dy == 0.0 {
+        return false;
+    }
+    s.zoom_percent = if ev.dy > 0.0 {
+        s.zoom_percent.saturating_add(10).clamp(50, 200)
+    } else {
+        s.zoom_percent.saturating_sub(10).clamp(50, 200)
+    };
+    tx.instant();
+    true
 }
 
 fn on_key(s: &mut Review, ev: &KeyEvent, tx: &mut Tx) -> bool {
@@ -168,7 +182,7 @@ fn zoom_shortcut(current: u16, ev: &KeyEvent) -> Option<u16> {
 fn main() {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     if args.len() == 1 && matches!(args[0].to_str(), Some("--help" | "-h")) {
-        println!("Usage: margin [git diff arguments]\n\nExamples:\n  margin\n  margin --cached\n  margin HEAD~1 HEAD -- src/\n\nRun from the repository you want to inspect. Ctrl++ / Ctrl+- zoom; Ctrl+0 resets.\nGit output formatting is controlled by the viewer; Rune tooling flags are disabled.");
+        println!("Usage: margin [git diff arguments]\n\nExamples:\n  margin\n  margin --cached\n  margin HEAD~1 HEAD -- src/\n\nRun from the repository you want to inspect. Ctrl++ / Ctrl+- or Ctrl+scroll up/down zoom; Ctrl+0 resets.\nGit output formatting is controlled by the viewer; Rune tooling flags are disabled.");
         return;
     }
     let spec = AppSpec {
