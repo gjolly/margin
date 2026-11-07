@@ -13,6 +13,9 @@ mod review_context;
 mod scrollbar;
 mod file_tree;
 
+// Base size of the whole UI; user zoom is relative to this scale.
+const BASE_UI_SCALE: f32 = 1.3;
+
 struct Review {
     diff: DiffState,
     files: file_tree::FilePane,
@@ -21,6 +24,12 @@ struct Review {
     zoom_percent: u16,
     chats: chat::Chats,
     scrollbar: scrollbar::Scrollbar,
+}
+
+impl Review {
+    fn ui_scale(&self) -> f32 {
+        BASE_UI_SCALE * self.zoom_percent as f32 / 100.0
+    }
 }
 
 fn init() -> Review {
@@ -100,7 +109,7 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
     let diff = s.scrollbar.build(diff, &k);
     // Only size changes rebuild this view; scrolling does not.
     let [width, height] = cx.layout_size("viewport").unwrap_or([1100.0, 720.0]);
-    let zoom = s.zoom_percent as f32 / 100.0;
+    let zoom = s.ui_scale();
     let content = col()
         .size(width / zoom, height / zoom)
         .absolute(0.0, 0.0)
@@ -158,7 +167,7 @@ fn main() {
     let handle = app.handle();
     let mut pending = Some(args);
     app.on_frame_drawn(|rt| {
-        let zoom = rt.state.zoom_percent as f32 / 100.0;
+        let zoom = rt.state.ui_scale();
         rt.state.scrollbar.follow(rt, zoom);
         rt.state.files.scrollbar.follow(rt, zoom);
     })

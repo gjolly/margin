@@ -187,7 +187,7 @@ pub fn build(s: &Review, k: &Kit, available: f32) -> El {
             tx.instant();
             match drag.phase {
                 Phase::Down => drag.data = s.files.width,
-                Phase::Move => s.files.width = (drag.data.clamp(min, max) + drag.dx / (s.zoom_percent as f32 / 100.0)).clamp(min, max),
+                Phase::Move => s.files.width = (drag.data.clamp(min, max) + drag.dx / s.ui_scale()).clamp(min, max),
                 Phase::Up if drag.cancelled() => s.files.width = drag.data,
                 Phase::Up => {},
             }
@@ -223,7 +223,7 @@ mod tests {
     fn settle(rt: &mut Runtime<Review>) {
         for _ in 0..45 {
             rt.frame(1.0 / 60.0);
-            let zoom = rt.state.zoom_percent as f32 / 100.0;
+            let zoom = rt.state.ui_scale();
             rt.state.scrollbar.follow(rt, zoom);
             rt.state.files.scrollbar.follow(rt, zoom);
         }
@@ -375,7 +375,7 @@ mod tests {
     fn pane_toggle_and_drag_preserve_diff_state_at_every_zoom() {
         for zoom in [50, 100, 200] {
             let mut rt = app(10, 15, zoom);
-            let scale = zoom as f32 / 100.0;
+            let scale = rt.state.ui_scale();
             let (x, y) = rt.find("file-pane-grip").unwrap();
             rt.pointer_move(x, y);
             rt.pointer_down(x, y);
