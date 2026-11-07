@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use super::*;
-use crate::config::test_connection;
+use serde_json::json;
+use crate::{code_tools, config::test_connection};
 use std::{io::{Read, Write}, net::TcpListener, sync::Mutex, thread, time::Duration};
 
 struct Mock {
@@ -183,4 +184,108 @@ fn activity_details_are_bounded_and_redacted() {
     assert_eq!(tool_activity("read_file", "invalid JSON", &config), "Reading file…");
     assert_eq!(tool_activity("list_files", "{}", &config), "Listing files…");
     assert_eq!(tool_activity("shell", "{}", &config), "Processing tool call…");
+}
+
+fn responses_reply(value: Value) -> (u16, String, Duration) {
+    (200, value.to_string(), Duration::ZERO)
+}
+
+#[tokio::test]
+async fn responses_tools_and_stateless_followups_preserve_ordered_items() {
+    let tool_output: Value = serde_json::from_str(include_str!("fixtures/responses-tools.json")).unwrap();
+    let text_output: Value = serde_json::from_str(include_str!("fixtures/responses-text.json")).unwrap();
+    let server = mock(vec![responses_reply(tool_output.clone()), responses_reply(text_output.clone()), responses_reply(text_output)]);
+    let config = test_connection(&server.url, json!({"api":"responses", "headers":{"X-Custom":"value"},
+        "extra_body":{"max_output_tokens":4096,"reasoning":{"effort":"low"}}}));
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("sample.rs"), "fn answer() -> u32 { 42 }\n").unwrap();
+    let mut history = vec![json!({"role":"system","content":"Help review code."})];
+    history.extend(question());
+    let answer = run(&reqwest::Client::new(), &config, dir.path().to_owned(), history.clone(), &|_| {}).await.unwrap();
+    assert_eq!(answer.text, "It returns 42.\n\n[redacted]\n\nDone.");
+    assert!(!answer.text.contains("PRIVATE"));
+    assert!(answer.stats.label().starts_with("300 tokens · 250 input · 50 output"));
+    assert_eq!(answer.stats.tool_calls, 2);
+    let saved = answer.history.clone();
+    let mut followup = saved.clone();
+    followup.push(json!({"role":"user","content":"Why?"}));
+    run(&reqwest::Client::new(), &config, dir.path().to_owned(), followup.clone(), &|_| {}).await.unwrap();
+    server.join.join().unwrap();
+    let requests = server.requests.lock().unwrap();
+    let first = &requests[0].1;
+    assert!(requests[0].0.starts_with("POST /v1/responses "));
+    assert!(requests[0].0.to_lowercase().contains("x-custom: value"));
+    assert!(requests[0].0.to_lowercase().contains("authorization: bearer test_secret"));
+    assert_eq!(first["input"], json!(history));
+    assert_eq!(first["model"], "test-model");
+    assert_eq!(first["max_output_tokens"], 4096);
+    assert_eq!(first["reasoning"]["effort"], "low");
+    assert_eq!(first["store"], false);
+    assert_eq!(first["include"], json!(["reasoning.encrypted_content"]));
+    for key in ["messages", "n", "previous_response_id", "max_completion_tokens", "reasoning_effort"] {
+        assert!(first.get(key).is_none());
+    }
+    let tools = first["tools"].as_array().unwrap();
+    assert_eq!(tools.len(), 3);
+    for (tool, original) in tools.iter().zip(code_tools::definitions().as_array().unwrap()) {
+        assert_eq!(tool["type"], "function");
+        assert_eq!(tool["parameters"], original["function"]["parameters"]);
+        assert_eq!(tool["strict"], false);
+        assert!(tool.get("function").is_none());
+    }
+    let continuation = requests[1].1["input"].as_array().unwrap();
+    assert_eq!(&continuation[2..6], tool_output["output"].as_array().unwrap());
+    for (index, call_id) in [(6, "call_1"), (7, "call_2")] {
+        assert_eq!(continuation[index]["type"], "function_call_output");
+        assert_eq!(continuation[index]["call_id"], call_id);
+        assert!(continuation[index]["output"].as_str().unwrap().contains("42"));
+    }
+    assert_eq!(requests[2].1["input"], json!(followup));
+    assert_eq!(&followup[..saved.len()], saved.as_slice());
+}
+
+#[tokio::test]
+async fn responses_tool_errors_are_returned_to_model() {
+    let calls: Vec<Value> = [("read_file", "not JSON"), ("shell", "{}"), ("read_file", "{\"path\":\"missing\"}")]
+        .into_iter().enumerate().map(|(i, (name, args))| json!({"type":"function_call","id":format!("item_{i}"),
+            "call_id":format!("call_{i}"),"name":name,"arguments":args})).collect();
+    let server = mock(vec![
+        responses_reply(json!({"status":"completed","output":calls})),
+        responses_reply(json!({"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Done"}]}]})),
+    ]);
+    let config = test_connection(&server.url, json!({"api":"responses","extra_body":{"include":[],"store":true}}));
+    let dir = tempfile::tempdir().unwrap();
+    run(&reqwest::Client::new(), &config, dir.path().to_owned(), question(), &|_| {}).await.unwrap();
+    server.join.join().unwrap();
+    let requests = server.requests.lock().unwrap();
+    assert_eq!(requests[0].1["include"], json!([]));
+    assert_eq!(requests[0].1["store"], true);
+    for item in &requests[1].1["input"].as_array().unwrap()[4..] {
+        let result: Value = serde_json::from_str(item["output"].as_str().unwrap()).unwrap();
+        assert!(result["error"].is_string());
+    }
+}
+
+#[tokio::test]
+async fn responses_failures_have_safe_diagnostics() {
+    for (status, body, expected) in [
+        (401, json!({"error":{"message":"TEST_SECRET"}}), "HTTP 401"),
+        (200, json!({"status":"failed","error":{"message":"provider TEST_SECRET"}}), "provider [redacted]"),
+        (200, json!({"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[]}), "incomplete: max_output_tokens"),
+        (200, json!({"status":"in_progress","output":[]}), "in_progress"),
+        (200, json!({"status":"cancelled","output":[]}), "cancelled"),
+        (200, json!({"output":[]}), "missing or invalid"),
+        (200, json!({"status":"completed"}), "missing its output"),
+        (200, json!({"status":"completed","output":[]}), "no answer text"),
+        (200, json!({"status":"completed","output":[{"type":"function_call","id":"item","name":"read_file","arguments":"{}"}]}), "malformed tool call"),
+        (200, json!({"status":"completed","output":[{"type":"message","role":"assistant","status":"incomplete","content":[]}]}), "unfinished"),
+    ] {
+        let server = mock(vec![(status, body.to_string(), Duration::ZERO)]);
+        let config = test_connection(&server.url, json!({"api":"responses"}));
+        let dir = tempfile::tempdir().unwrap();
+        let error = run(&reqwest::Client::new(), &config, dir.path().to_owned(), question(), &|_| {}).await.err().unwrap();
+        assert!(error.contains(expected), "expected {expected}, got {error}");
+        assert!(!error.contains("TEST_SECRET"));
+        server.join.join().unwrap();
+    }
 }

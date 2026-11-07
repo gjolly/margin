@@ -17,8 +17,8 @@ pub struct TurnStats {
 impl TurnStats {
     pub fn record(&mut self, usage: &Value) {
         self.requests += 1;
-        let input = usage["prompt_tokens"].as_u64().map(u128::from);
-        let output = usage["completion_tokens"].as_u64().map(u128::from);
+        let input = usage["prompt_tokens"].as_u64().or_else(|| usage["input_tokens"].as_u64()).map(u128::from);
+        let output = usage["completion_tokens"].as_u64().or_else(|| usage["output_tokens"].as_u64()).map(u128::from);
         let total = usage["total_tokens"].as_u64().map(u128::from)
             .or_else(|| Some(input? + output?));
         self.partial |= input.is_none() || output.is_none() || total.is_none();

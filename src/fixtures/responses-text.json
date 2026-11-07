@@ -1,0 +1,13 @@
+{
+  "id": "resp_answer",
+  "status": "completed",
+  "output": [
+    {"type": "reasoning", "id": "rs_2", "summary": [], "encrypted_content": "more-opaque-state"},
+    {"type": "message", "id": "msg_2", "role": "assistant", "status": "completed", "content": [
+      {"type": "output_text", "text": "It returns 42."},
+      {"type": "output_text", "text": "TEST_SECRET"}
+    ]},
+    {"type": "message", "id": "msg_3", "role": "assistant", "status": "completed", "content": [{"type": "output_text", "text": "Done."}]}
+  ],
+  "usage": {"input_tokens": 150, "output_tokens": 30, "total_tokens": 180}
+}

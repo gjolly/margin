@@ -88,6 +88,7 @@ Create `$XDG_CONFIG_HOME/margin/config.json`, or `~/.config/margin/config.json` 
 {
   "ai": {
     "base_url": "https://api.openai.com/v1",
+    "api": "chat_completions",
     "model": "your-model-id",
     "api_key_env": "OPENAI_API_KEY",
     "headers": {},
@@ -99,9 +100,52 @@ Create `$XDG_CONFIG_HOME/margin/config.json`, or `~/.config/margin/config.json` 
 
 Set the named environment variable in the environment used to launch margin. Alternatively, set `"api_key": "your-token"` within `ai`; a nonempty environment token takes precedence. Neither credentials nor configuration files are created by the app. With missing configuration or credentials, the composer keeps your draft and explains setup, with sending disabled. Diff viewing still works.
 
-`model` is required and is sent exactly as configured. `base_url` defaults to the OpenAI URL above; `/chat/completions` is appended, so include any provider-specific base path such as `/v1`. The token is sent with Bearer authentication. This version requires a token and an **OpenAI-compatible Chat Completions endpoint with function tool support**, even for local providers. Native Responses, Anthropic, and other protocols are not supported. Automated API tests use a local mock server and dummy tokens; compatibility depends on the selected provider and model supporting the request and tool-calling format.
+`model` is required and is sent exactly as configured. `api` accepts `chat_completions` (the default when omitted) or `responses`. `base_url` defaults to the OpenAI URL above. Margin appends `/chat/completions` or `/responses` respectively, removing trailing slashes first; include any provider-specific base path such as `/v1`. Margin never adds `/v1` itself. The token is sent with Bearer authentication. Both protocols require a token and function tool support, even for local providers. Native Anthropic and other protocols are not supported. Automated API tests use a local mock server and dummy tokens; compatibility depends on the selected provider and model supporting the request and tool-calling format.
 
-`headers` accepts additional string-valued HTTP headers. `extra_body` accepts arbitrary JSON request fields, for example `{"max_completion_tokens": 4096}` or provider-specific reasoning parameters. Parameters are sent unchanged; the provider validates them. The app owns `model`, `messages`, `tools`, `tool_choice`, `stream`, and `n`; overriding these is an error. Authorization, Host, Content-Type, and Content-Length headers cannot be overridden. URLs must use HTTP(S), without embedded credentials, queries, or fragments. Requests do not follow redirects. `timeout_seconds` applies to each HTTP request including its response body and accepts 1–3600 seconds. Answers arrive as complete messages rather than streaming.
+`headers` accepts additional string-valued HTTP headers. `extra_body` accepts JSON request fields for the selected protocol, for example `{"max_completion_tokens": 4096}` for Chat Completions or `{"max_output_tokens": 4096, "reasoning": {"effort": "low"}}` for Responses. Parameters are sent unchanged; the provider validates them. Known Chat Completions-only parameters are rejected for Responses. The app owns `model`, `messages`, `tools`, `tool_choice`, `stream`, and `n`; Responses also reserves `input`, `instructions`, `previous_response_id`, and `conversation`. Overriding these is an error. Authorization, Host, Content-Type, and Content-Length headers cannot be overridden. URLs must use HTTP(S), without embedded credentials, queries, or fragments. Requests do not follow redirects. `timeout_seconds` applies to each HTTP request including its response body and accepts 1–3600 seconds. Answers arrive as complete messages rather than streaming.
+
+Responses requests resend the full thread as ordered input and output items, including function calls, matching `function_call_output` results, and reasoning items. They do not use `previous_response_id` or require server-side history. Reasoning is retained for continuation but never displayed. By default, Responses sends `store: false` and `include: ["reasoning.encrypted_content"]` to support stateless reasoning-model continuation as described in the [OpenAI conversation state documentation](https://developers.openai.com/api/docs/guides/conversation-state). If a compatible provider rejects these optional parameters, `extra_body` can override them (for example `{"include": [], "store": true}`), or omit them entirely with `{"include": null, "store": null}`. That provider must still return any reasoning state needed for continuation. Tool definitions use `strict: false` to preserve optional repository-tool arguments. Incomplete or failed responses produce an error and can be retried.
+
+OpenAI Responses:
+
+```json
+{
+  "ai": {
+    "base_url": "https://api.openai.com/v1",
+    "api": "responses",
+    "model": "gpt-5.4",
+    "api_key_env": "OPENAI_API_KEY"
+  }
+}
+```
+
+OpenRouter Chat Completions:
+
+```json
+{
+  "ai": {
+    "base_url": "https://openrouter.ai/api/v1",
+    "api": "chat_completions",
+    "model": "anthropic/claude-sonnet-4.6",
+    "api_key_env": "OPENROUTER_API_KEY"
+  }
+}
+```
+
+GitHub Copilot Responses (experimental):
+
+```json
+{
+  "ai": {
+    "base_url": "https://api.githubcopilot.com",
+    "api": "responses",
+    "model": "gpt-6.1-sol",
+    "api_key_env": "COPILOT_TOKEN"
+  }
+}
+```
+
+GitHub Copilot's direct inference endpoint is undocumented and is not guaranteed to remain compatible. Supply an existing valid bearer token; Margin does not implement OAuth token exchange or add Copilot-specific headers. These examples illustrate configuration, not verified model availability or account access. Optional headers, extra body fields, and timeout settings retain their defaults when omitted.
 
 ### Context and local code access
 

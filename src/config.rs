@@ -14,6 +14,7 @@ struct Config {
 #[derive(Deserialize)]
 #[serde(default, deny_unknown_fields)]
 struct Ai {
+    api: Api,
     base_url: String,
     model: String,
     api_key_env: String,
@@ -26,6 +27,7 @@ struct Ai {
 impl Default for Ai {
     fn default() -> Self {
         Self {
+            api: Api::default(),
             base_url: "https://api.openai.com/v1".into(),
             model: String::new(),
             api_key_env: "OPENAI_API_KEY".into(),
@@ -37,7 +39,16 @@ impl Default for Ai {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Api {
+    #[default]
+    ChatCompletions,
+    Responses,
+}
+
 pub struct Connection {
+    pub api: Api,
     pub endpoint: reqwest::Url,
     pub model: String,
     pub headers: HeaderMap,
@@ -82,7 +93,8 @@ fn parse(bytes: &[u8], env: impl Fn(&str) -> Option<String>) -> Result<Connectio
     if !(1..=3600).contains(&ai.timeout_seconds) {
         return Err("timeout_seconds must be between 1 and 3600.".into());
     }
-    let endpoint = reqwest::Url::parse(&format!("{}/chat/completions", ai.base_url.trim_end_matches('/')))
+    let path = match ai.api { Api::ChatCompletions => "chat/completions", Api::Responses => "responses" };
+    let endpoint = reqwest::Url::parse(&format!("{}/{path}", ai.base_url.trim_end_matches('/')))
         .map_err(|_| "Invalid AI base_url.".to_owned())?;
     if !matches!(endpoint.scheme(), "http" | "https") || !endpoint.username().is_empty()
         || endpoint.password().is_some() || endpoint.query().is_some() || endpoint.fragment().is_some()
@@ -92,6 +104,16 @@ fn parse(bytes: &[u8], env: impl Fn(&str) -> Option<String>) -> Result<Connectio
     for key in ["model", "messages", "tools", "tool_choice", "stream", "n"] {
         if ai.extra_body.contains_key(key) {
             return Err(format!("extra_body cannot override {key}."));
+        }
+    }
+    if ai.api == Api::Responses {
+        for key in ["input", "instructions", "previous_response_id", "conversation"] {
+            if ai.extra_body.contains_key(key) { return Err(format!("extra_body cannot override {key}.")); }
+        }
+        for key in ["max_tokens", "max_completion_tokens", "reasoning_effort", "response_format", "functions", "function_call"] {
+            if ai.extra_body.contains_key(key) {
+                return Err(format!("extra_body field {key} is a Chat Completions parameter; use its Responses equivalent."));
+            }
         }
     }
     let token = env(&ai.api_key_env).filter(|s| !s.trim().is_empty())
@@ -114,7 +136,7 @@ fn parse(bytes: &[u8], env: impl Fn(&str) -> Option<String>) -> Result<Connectio
     let mut auth = HeaderValue::from_str(&format!("Bearer {token}")).map_err(|_| "Invalid AI token.")?;
     auth.set_sensitive(true);
     headers.insert(AUTHORIZATION, auth);
-    Ok(Connection { endpoint, model: ai.model, headers, extra_body: ai.extra_body,
+    Ok(Connection { api: ai.api, endpoint, model: ai.model, headers, extra_body: ai.extra_body,
         timeout: Duration::from_secs(ai.timeout_seconds), secrets })
 }
 
@@ -141,10 +163,31 @@ mod tests {
         let c = parse(br#"{"ai":{"model":"test","api_key":"inline"}}"#, |_| Some("environment".into())).unwrap();
         assert_eq!(c.endpoint.as_str(), "https://api.openai.com/v1/chat/completions");
         assert_eq!(c.timeout.as_secs(), 180);
+        assert_eq!(c.api, Api::ChatCompletions);
         assert_eq!(c.headers[AUTHORIZATION], "Bearer environment");
         assert_eq!(c.redact("environment inline"), "[redacted] [redacted]");
         let c = parse(br#"{"ai":{"model":"test","api_key":"inline"}}"#, |_| None).unwrap();
         assert_eq!(c.headers[AUTHORIZATION], "Bearer inline");
+    }
+
+    #[test]
+    fn protocols_and_endpoint_paths() {
+        for (api, suffix) in [("chat_completions", "chat/completions"), ("responses", "responses")] {
+            for base in ["https://example.com", "https://example.com/", "https://example.com/custom/v1///"] {
+                let c = test_connection(base, serde_json::json!({"api":api}));
+                assert_eq!(c.endpoint.as_str(), format!("{}/{suffix}", base.trim_end_matches('/')));
+            }
+        }
+        for ai in [
+            serde_json::json!({"api":"unknown"}),
+            serde_json::json!({"api":"responses","extra_body":{"input":[]}}),
+            serde_json::json!({"api":"responses","extra_body":{"previous_response_id":"id"}}),
+            serde_json::json!({"api":"responses","extra_body":{"max_completion_tokens":123}}),
+        ] {
+            let mut value = serde_json::json!({"model":"test","api_key":"SECRET"});
+            value.as_object_mut().unwrap().extend(ai.as_object().unwrap().clone());
+            assert!(parse(&serde_json::to_vec(&serde_json::json!({"ai":value})).unwrap(), |_| None).is_err());
+        }
     }
 
     #[test]

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! OpenAI-compatible tool loop, isolated from presentation and credentials UI.
-use crate::{code_tools::{self, CodeTools}, config::Connection, usage::TurnStats};
-use serde_json::{Value, json};
+use crate::{code_tools::CodeTools, config::Connection, usage::TurnStats};
+use serde_json::Value;
 use std::{path::PathBuf, sync::Arc, time::Instant};
+
+mod protocol;
 
 pub const HISTORY_LIMIT: usize = 512 * 1024;
 const RESPONSE_LIMIT: usize = 2 * 1024 * 1024;
@@ -56,10 +58,8 @@ fn within_budget(history: &[Value]) -> Result<(), String> {
     } else { Ok(()) }
 }
 
-async fn response(client: &reqwest::Client, connection: &Connection, history: &[Value]) -> Result<(Value, Value), String> {
-    let mut body = connection.extra_body.clone();
-    body.extend(json!({"model":connection.model,"messages":history,"tools":code_tools::definitions(),
-        "tool_choice":"auto","stream":false,"n":1}).as_object().unwrap().clone());
+async fn response(client: &reqwest::Client, connection: &Connection, history: &[Value]) -> Result<protocol::Output, String> {
+    let body = protocol::request(connection, history);
     let mut response = client.post(connection.endpoint.clone()).headers(connection.headers.clone()).json(&body).send().await
         .map_err(|e| if e.is_timeout() { "AI request timed out." } else { "Could not connect to the AI endpoint." }.to_owned())?;
     if !response.status().is_success() {
@@ -70,14 +70,9 @@ async fn response(client: &reqwest::Client, connection: &Connection, history: &[
         if bytes.len() + chunk.len() > RESPONSE_LIMIT { return Err("AI response exceeded 2 MiB.".into()); }
         bytes.extend_from_slice(&chunk);
     }
-    let value: Value = serde_json::from_slice(&bytes).map_err(|_| "AI endpoint returned invalid JSON.")?;
-    let mut message = value.get("choices").and_then(|v| v.get(0)).and_then(|v| v.get("message")).cloned()
-        .filter(Value::is_object).ok_or("AI response is missing an assistant message.")?;
-    if message["role"] != "assistant" { return Err("AI response has an invalid message role.".into()); }
-    redact_value(&mut message, connection);
-    // An exhausted output budget is not a completed response; don't silently post it.
-    if value["choices"][0]["finish_reason"] == "length" { return Err("AI response hit its output limit. Increase the provider's output token parameter and restart.".into()); }
-    Ok((message, value["usage"].clone()))
+    let mut value: Value = serde_json::from_slice(&bytes).map_err(|_| "AI endpoint returned invalid JSON.")?;
+    redact_value(&mut value, connection);
+    protocol::parse(connection.api, value)
 }
 
 fn redact_value(value: &mut Value, connection: &Connection) {
@@ -101,47 +96,33 @@ async fn run(client: &reqwest::Client, connection: &Connection, root: PathBuf, m
     for _ in 0..16 {
         within_budget(&history)?;
         progress("Waiting for AI response…".into());
-        let (message, usage) = response(client, connection, &history).await?;
-        stats.record(&usage);
-        let tool_calls = match message.get("tool_calls") {
-            None | Some(Value::Null) => Vec::new(),
-            Some(Value::Array(calls)) => calls.clone(),
-            _ => return Err("AI response contains invalid tool calls.".into()),
-        };
-        if tool_calls.is_empty() {
-            let text = message["content"].as_str().filter(|s| !s.trim().is_empty())
-                .ok_or("AI endpoint returned no answer text.")?.to_owned();
-            history.push(message);
-            within_budget(&history)?;
+        let output = response(client, connection, &history).await?;
+        stats.record(&output.usage);
+        history.extend(output.items);
+        within_budget(&history)?;
+        if output.calls.is_empty() {
+            if output.text.trim().is_empty() { return Err("AI endpoint returned no answer text.".into()); }
             stats.elapsed = started.elapsed();
             stats.tool_calls = calls;
-            return Ok(Answer { history, text, stats });
+            return Ok(Answer { history, text: output.text, stats });
         }
-        calls += tool_calls.len();
+        calls += output.calls.len();
         if calls > 64 { return Err("AI turn exceeded its 64 tool-call limit.".into()); }
-        let mut ids = std::collections::HashSet::new();
-        for call in &tool_calls {
-            if call["type"] != "function" || !call["id"].as_str().is_some_and(|s| !s.is_empty() && ids.insert(s))
-                || !call["function"]["name"].is_string() || !call["function"]["arguments"].is_string()
-            { return Err("AI response contains a malformed tool call.".into()); }
-        }
-        history.push(message);
-        within_budget(&history)?;
         if tools.is_none() {
             progress("Preparing code tools…".into());
             let root = root.clone();
             tools = Some(Arc::new(tokio::task::spawn_blocking(move || CodeTools::new(&root)).await
                 .map_err(|_| "Code inventory worker failed.")??));
         }
-        for call in tool_calls {
+        for call in output.calls {
             let tools = tools.as_ref().unwrap().clone();
-            let name = call["function"]["name"].as_str().unwrap().to_owned();
-            let args = call["function"]["arguments"].as_str().unwrap().to_owned();
+            let name = call.name;
+            let args = call.arguments;
             progress(tool_activity(&name, &args, connection));
             let mut result = tokio::task::spawn_blocking(move || tools.call(&name, &args)).await
                 .map_err(|_| "Code inspection worker failed.")?;
             redact_value(&mut result, connection);
-            history.push(json!({"role":"tool","tool_call_id":call["id"],"content":result.to_string()}));
+            history.push(protocol::tool_result(connection.api, &call.id, result));
             within_budget(&history)?;
         }
     }

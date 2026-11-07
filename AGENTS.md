@@ -48,7 +48,8 @@ Git viewer is the foundation, not the finished product.
   ~/.config/margin/config.json when XDG_CONFIG_HOME is unset, empty, or relative.
   Configuration and credentials load after the first frame; changes require a
   restart. The app does not create configuration or credential files.
-- AI uses one OpenAI-compatible Chat Completions endpoint with function tools.
+- AI uses a configurable OpenAI-compatible Chat Completions or Responses endpoint
+  with function tools; omitted `api` defaults to Chat Completions.
   The model is explicit; credentials come from the configured environment
   variable or inline api_key, with a nonempty environment token taking precedence.
   See README.md for the supported JSON fields and defaults.
@@ -63,6 +64,7 @@ Git viewer is the foundation, not the finished product.
 - src/chat.rs: session conversation state and inline chat presentation.
 - src/review_context.rs: selection-focused agent instructions and patch context.
 - src/agent.rs and src/agent_tests.rs: background API/tool loop and mock HTTP tests.
+- src/agent/protocol.rs: protocol-specific request and response wire formats.
 - src/code_tools.rs: bounded local listing, literal search, and file reads.
 - flake.nix and flake.lock: Linux package, development environment, and runtime libraries.
 - packaging/build-deb.sh: native Ubuntu binary package and runtime dependencies.
@@ -143,7 +145,7 @@ Compiling and running non-rendering tests is appropriate.
   label every comparison as historical or add irrelevant source caveats.
 - AI chats are session-only and read-only. Do not imply persisted reviews,
   autonomous edits, or support for native provider protocols beyond the configured
-  OpenAI-compatible Chat Completions endpoint. Never expose configured credentials
+  OpenAI-compatible Chat Completions or Responses endpoint. Never expose configured credentials
   in prompts, UI messages, logs, or test output.
 
 ## Nix and Ubuntu
