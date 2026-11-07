@@ -64,7 +64,9 @@ Git viewer is the foundation, not the finished product.
 - src/review_context.rs: selection-focused agent instructions and patch context.
 - src/agent.rs and src/agent_tests.rs: background API/tool loop and mock HTTP tests.
 - src/code_tools.rs: bounded local listing, literal search, and file reads.
-- flake.nix and flake.lock: Linux development environment and runtime libraries.
+- flake.nix and flake.lock: Linux package, development environment, and runtime libraries.
+- packaging/build-deb.sh: native Ubuntu binary package and runtime dependencies.
+- .github/workflows/ubuntu-deb.yml: Ubuntu 26.04 amd64 build and installation checks.
 - Cargo.toml and Cargo.lock: app dependencies.
 - README.md: user-facing build, run, and usage instructions.
 
@@ -153,8 +155,15 @@ Compiling and running non-rendering tests is appropriate.
   commands for normal development.
 - Nix development executables reference the Nix store. They are not standalone
   Ubuntu distribution artifacts.
-- The intended Ubuntu path is a native build in Ubuntu CI or a container,
-  with runtime dependencies packaged or documented. It is not configured yet.
+- The flake exports an installable release package and a default app, with
+  Git and runtime library lookup supplied by its launcher.
+- Ubuntu distribution uses a native Ubuntu 26.04 amd64 build and a binary-only
+  .deb. The workflow runs only on vX.Y.Z tags matching Cargo.toml, runs
+  non-rendering tests, checks installation and library loading in a clean Podman
+  container, then publishes a GitHub release with the .deb attached. Keep dlopen
+  libraries explicitly declared alongside dpkg-shlibdeps results, with complete
+  Wayland/X11 alternatives and checks that neither backend pulls in the other.
+  Desktop/GPU validation remains manual.
 - Do not promise one binary that runs across all operating systems or assume
   GPU drivers can be bundled independently of the host.
 - The flake declares x86-64 and ARM64 Linux; do not claim both were tested.

@@ -1,0 +1,80 @@
+name: Ubuntu release package
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    env:
+      RUSTUP_TOOLCHAIN: 1.99.0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate release version
+        run: |
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
+          if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "Release tag must match Cargo.toml version (v$version)." >&2
+            exit 1
+          fi
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential pkg-config libfontconfig1-dev libxkbcommon-dev \
+            libwayland-dev dpkg-dev python3 podman
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --no-self-update
+      - name: Run tests
+        run: cargo test --locked
+      - name: Build optimized binary
+        run: cargo build --release --locked
+      - name: Build binary package
+        run: |
+          bash packaging/build-deb.sh
+          dpkg-deb --info target/debian/*.deb
+          dpkg-deb --contents target/debian/*.deb
+      - name: Check installation in clean Ubuntu 26.04
+        run: |
+          for backend in default wayland x11; do
+          podman run --rm --env DEBIAN_FRONTEND=noninteractive --env "DISPLAY_BACKEND=$backend" -v "$PWD/target/debian:/packages:ro" ubuntu:26.04 bash -euxo pipefail -c '
+            apt-get update
+            case "$DISPLAY_BACKEND" in
+              wayland) apt-get install --no-install-recommends -y libwayland-cursor0 ;;
+              x11) apt-get install --no-install-recommends -y libx11-xcb1 libxcursor1 libxi6 libxkbcommon-x11-0 ;;
+            esac
+            apt-get install --no-install-recommends -y /packages/*.deb python3
+            dpkg --status rune-diff | grep -qx "Status: install ok installed"
+            ldd /usr/bin/rune-diff > /tmp/linked-libraries
+            cat /tmp/linked-libraries
+            ! grep -q "not found" /tmp/linked-libraries
+            python3 - <<"PY"
+          import ctypes
+          import ctypes.util
+          import os
+          common = ("libfontconfig.so.1", "libxkbcommon.so.0", "libvulkan.so.1")
+          wayland = ("libwayland-client.so.0", "libwayland-cursor.so.0")
+          x11 = ("libX11.so.6", "libX11-xcb.so.1", "libXcursor.so.1", "libXi.so.6",
+                 "libxkbcommon-x11.so.0", "libXrender.so.1", "libxcb.so.1")
+          is_x11 = os.environ["DISPLAY_BACKEND"] == "x11"
+          for name in common + (x11 if is_x11 else wayland):
+              ctypes.CDLL(name)
+          # APT must not pull in the unused backend, including on a clean install.
+          assert ctypes.util.find_library("wayland-client" if is_x11 else "X11") is None
+          PY
+          '
+          done
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" target/debian/*.deb \
+            --verify-tag --title "Rune Diff $GITHUB_REF_NAME" --generate-notes

@@ -1,8 +1,57 @@
 # Rune Diff
 
-A native Git diff viewer with optional inline AI conversations and read-only
-code inspection, based on Rune Kit's diff example (MIT). Rune and Rune Kit are
-pinned to the same Git revision; Cargo.lock and flake.lock pin dependencies.
+## Install on Ubuntu 26.04
+
+Download the amd64 `.deb` from the
+[latest release](https://github.com/gjolly/rune-diff/releases/latest).
+In the directory containing the download, install it with:
+
+    sudo apt install ./rune-diff_*.deb
+
+APT installs Git and common font, keyboard, and Vulkan libraries. The display
+dependencies accept either a complete Wayland or X11 client stack. APT reuses a
+complete installed backend; if neither is installed, it defaults to Wayland. It
+selects from installed packages, not the current desktop session. GPU drivers
+may have their own display-library dependencies. For an X11 desktop missing
+client libraries, install its complete backend explicitly alongside the package:
+
+    sudo apt install libx11-xcb1 libxcursor1 libxi6 libxkbcommon-x11-0 ./rune-diff_*.deb
+
+Run `rune-diff` from the repository you want to review. This package
+targets Ubuntu 26.04 on amd64; older Ubuntu versions are not supported. Your
+desktop session still needs working Vulkan drivers for its GPU.
+
+## Install on NixOS
+
+With flakes enabled, install directly from GitHub:
+
+    nix profile add github:gjolly/rune-diff
+
+Then run `rune-diff` from the repository you want to review. You can also run it
+without installing, from that repository:
+
+    nix run github:gjolly/rune-diff -- --cached
+
+To install declaratively, add an input to your system or Home Manager flake:
+
+```nix
+inputs.rune-diff.url = "github:gjolly/rune-diff";
+```
+
+In a module that has access to your flake's `inputs`, use:
+
+```nix
+environment.systemPackages = [ inputs.rune-diff.packages.${pkgs.stdenv.hostPlatform.system}.default ];
+# Home Manager: use home.packages instead of environment.systemPackages.
+```
+
+Pass `inputs` to NixOS modules through `specialArgs = { inherit inputs; };`, or
+to Home Manager modules through `extraSpecialArgs = { inherit inputs; };`.
+Keep Rune Diff's pinned nixpkgs input for the tested compiler and libraries.
+The package builds in release mode, runs non-rendering tests, and includes Git
+and library lookup in its launcher. No development shell is needed to use it.
+The flake declares x86-64 and ARM64 Linux; ARM64 has not been tested.
+A desktop session with working Vulkan drivers is required.
 
 ## Build and run on NixOS
 
@@ -179,10 +228,46 @@ The shell supports x86-64 and ARM64 Linux; only the setup host has been tested.
 
 ## Distribution
 
-The Nix development binary references the Nix store. For Ubuntu distribution,
-build this Cargo project in Ubuntu CI or a container and package its runtime
-dependencies. Ubuntu packaging is not configured yet.
+Build the installable Nix package locally with `nix build`; the executable is
+`result/bin/rune-diff`. Nix binaries reference the Nix store and are separate
+from the native Ubuntu package.
+
+The [Ubuntu release workflow](https://github.com/gjolly/rune-diff/actions/workflows/ubuntu-deb.yml)
+runs only when a version tag such as `v0.1.0` is pushed. The tag must match
+the version in Cargo.toml. It uses Ubuntu 26.04 amd64 and Rust 1.99.0, runs
+`cargo test --locked`, builds with `cargo build --release --locked`, and checks
+installation before creating a GitHub release with generated notes and attaching
+the `.deb`. A tag `v0.1.0` produces `rune-diff_0.1.0-1_amd64.deb`.
+No source package is built.
+
+To publish, update Cargo.toml and Cargo.lock to the release version, commit the
+changes, and push the corresponding tag:
+
+    git tag v0.1.0
+    git push origin v0.1.0
+
+To build a `.deb` yourself, use Ubuntu 26.04 (or a Podman container of that
+release), install Rust 1.99.0 with rustup, and install the native build tools:
+
+    sudo apt install build-essential pkg-config libfontconfig1-dev libxkbcommon-dev libwayland-dev dpkg-dev python3 git
+    cargo test --locked
+    cargo build --release --locked
+    bash packaging/build-deb.sh
+
+The package is written to `target/debian/`. `DEB_VERSION` can override its default
+version from Cargo.toml. The script uses `dpkg-shlibdeps` to derive versioned
+dependencies for linked libraries and explicitly declares libraries loaded at
+runtime. It rejects Nix-linked binaries. The workflow installs the package in a
+clean Ubuntu 26.04 Podman containers with no display libraries, Wayland libraries,
+and X11 libraries. It installs without recommendations to check required
+dependencies, checks linked and dynamically loaded libraries, and verifies that
+the unused backend is not installed, without launching a window. Visual behavior
+still needs testing in a desktop session.
 
 ## License
+
+Based on Rune Kit's MIT-licensed diff example, with optional inline AI
+conversations and read-only code inspection. Rune and Rune Kit are pinned to the
+same Git revision; Cargo.lock and flake.lock pin dependencies.
 
 MIT; see LICENSE for the upstream attribution retained with the example.
