@@ -34,7 +34,7 @@ impl FilePane {
     pub fn new() -> Self {
         Self { revision: 0, rows: Vec::new(), file_rows: Vec::new(), visible: true, width: 260.0,
             active: None, scrollbar: Scrollbar::for_viewport(
-                "tree-scroll", "tree-scroll", "tree-area", "tree-scrollbar").on_left() }
+                "tree-scroll", "tree-area", "tree-scrollbar").on_left() }
     }
 
     /// Build the outline and return the diff files in the same traversal order.
@@ -167,6 +167,7 @@ pub fn build(s: &Review, k: &Kit, available: f32) -> El {
             }).virtual_rows_version(s.files.revision);
     let viewport = col().key("tree-scroll").w_full().grow(1.0).min_h(0.0)
         .on_wheel(crate::on_zoom_wheel)
+        .on_scroll_offset(s.files.scrollbar.on_scroll_offset())
         .scroll(ScrollSpec { stick_bottom: false }).child(if s.files.rows.is_empty() {
             col().w_full().padding(10.0).child(text(s.message.clone().unwrap_or_default())
                 .font(k.ty.ui).color(k.c.text_muted).wrap())
@@ -226,9 +227,6 @@ mod tests {
     fn settle(rt: &mut Runtime<Review>) {
         for _ in 0..45 {
             rt.frame(1.0 / 60.0);
-            let zoom = rt.state.ui_scale();
-            rt.state.scrollbar.follow(rt, zoom);
-            rt.state.files.scrollbar.follow(rt, zoom);
         }
     }
 
@@ -272,6 +270,30 @@ mod tests {
     fn offset(rt: &Runtime<Review>, key: &str) -> f64 {
         rt.accessibility_tree().nodes.iter().find_map(|(_, node)|
             (node.author_id() == Some(key)).then(|| node.scroll_y()).flatten()).unwrap()
+    }
+
+    #[test]
+    fn tree_thumb_follows_each_frame_and_empty_results_hide_diff_scrollbar() {
+        let mut rt = app(40, 10, 100);
+        rt.wheel(100.0, 300.0, -300.0);
+        for _ in 0..30 {
+            rt.frame(1.0 / 60.0);
+            let tree = rt.accessibility_tree();
+            let scroll = &tree.nodes.iter().find(|(_, n)| n.author_id() == Some("tree-scroll")).unwrap().1;
+            let offset = scroll.scroll_y().unwrap() as f32;
+            let max = scroll.scroll_y_max().unwrap() as f32;
+            let ([_, bar_y, _, height], _) = rt.presented("tree-scrollbar").unwrap();
+            let ([_, thumb_y, _, length], _) = rt.elements().iter().find(|e| e.path.ends_with("/tree-scrollbar/thumb")).map(|e| (e.rect, e.opacity)).unwrap();
+            let scale = rt.state.ui_scale();
+            let expected_y = 2.0 * scale + (height - 4.0 * scale - length) * offset / max;
+            assert!((thumb_y - bar_y - expected_y).abs() < 1.0, "tree thumb lags");
+        }
+        rt.update(|s, tx| { tx.instant(); crate::load_result(s, Ok(String::new())); });
+        settle(&mut rt);
+        assert!(rt.presented("diff-scrollbar").is_none());
+        rt.update(|s, tx| { tx.instant(); crate::load_result(s, Ok(patch(2, 100))); });
+        settle(&mut rt);
+        assert!(rt.presented("diff-scrollbar").unwrap().0[3] > 0.0);
     }
 
     #[test]
@@ -384,8 +406,6 @@ mod tests {
         assert!(mounted <= limit && mounted < 150, "mounted {mounted}, limit {limit}");
         for _ in 0..5 {
             assert!(!rt.frame(1.0 / 60.0), "idle app requested another frame");
-            rt.state.scrollbar.follow(&rt, 1.0);
-            rt.state.files.scrollbar.follow(&rt, 1.0);
         }
         // Both custom scrollbars target their own viewport even when the tree comes first.
         click(&mut rt, "tree-scrollbar");

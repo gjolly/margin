@@ -103,6 +103,7 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
             DiffView::new(|s: &Review| &s.diff, |s: &mut Review| &mut s.diff)
                 .key("review-diff")
                 .on_wheel(on_zoom_wheel)
+                .on_scroll_offset(s.scrollbar.on_scroll_offset())
                 .search(s.search.highlights())
                 .on_visible_file(|s, file| s.files.follow(file))
                 .on_comment(|s: &mut Review, lines, tx| {
@@ -114,7 +115,7 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
                 .build(s, &k)
         },
     };
-    let diff = s.scrollbar.build(diff, &k);
+    let diff = if s.message.is_none() { s.scrollbar.build(diff, &k) } else { diff };
     // Only size changes rebuild this view; scrolling does not.
     let [width, height] = cx.layout_size("viewport").unwrap_or([1100.0, 720.0]);
     let zoom = s.ui_scale();
@@ -194,12 +195,7 @@ fn main() {
     let app = App::new(spec).args(Vec::<String>::new()).modifier_keys();
     let handle = app.handle();
     let mut pending = Some(args);
-    app.on_frame_drawn(|rt| {
-        let zoom = rt.state.ui_scale();
-        rt.state.scrollbar.follow(rt, zoom);
-        rt.state.files.scrollbar.follow(rt, zoom);
-    })
-    .on_ready(move |_| {
+    app.on_ready(move |_| {
         let Some(args) = pending.take() else { return };
         let search_handle = handle.clone();
         handle.update(move |s, tx| {

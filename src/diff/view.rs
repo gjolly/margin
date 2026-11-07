@@ -73,6 +73,7 @@ pub struct DiffView<S> {
     on_comment: Option<Rc<dyn Fn(&mut S, LineRange, &mut Tx)>>,
     on_visible_file: Option<Rc<dyn Fn(&mut S, usize)>>,
     on_wheel: Option<Rc<dyn Fn(&mut S, rune::WheelEvent, &mut Tx) -> bool>>,
+    on_scroll_offset: Option<Rc<dyn Fn(rune::ScrollPos)>>,
     search: Option<crate::search::Highlights>,
 }
 
@@ -88,6 +89,7 @@ impl<S: 'static> DiffView<S> {
             on_comment: None,
             on_visible_file: None,
             on_wheel: None,
+            on_scroll_offset: None,
             search: None,
         }
     }
@@ -143,6 +145,12 @@ impl<S: 'static> DiffView<S> {
         self
     }
 
+    /// Follow the scroll viewport in the same frame using live values.
+    pub fn on_scroll_offset(mut self, f: impl Fn(rune::ScrollPos) + 'static) -> Self {
+        self.on_scroll_offset = Some(Rc::new(f));
+        self
+    }
+
     pub fn build(self, s: &S, k: &Kit) -> El {
         let st = (self.get)(s);
         let look = Look::new(k);
@@ -177,6 +185,9 @@ impl<S: 'static> DiffView<S> {
             scroll.on_wheel(move |s: &mut S, event, tx| handler(s, event, tx))
         } else { scroll };
         let scroll = scroll.child(list);
+        let scroll = if let Some(handler) = v.d.on_scroll_offset.clone() {
+            scroll.on_scroll_offset(move |at| handler(at))
+        } else { scroll };
         let mut root = col().key(key).w_full().grow(1.0).min_h(0.0).fill(v.look.bg).child(scroll);
         if let Some(f) = st.sticky() {
             root = root.child(v.file_header(s, st, f, true).key("sticky").absolute(0.0, 0.0).w_full());
