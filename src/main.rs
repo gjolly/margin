@@ -8,6 +8,7 @@ mod config;
 mod code_tools;
 mod agent;
 mod chat;
+mod review_context;
 
 struct Review {
     diff: DiffState,

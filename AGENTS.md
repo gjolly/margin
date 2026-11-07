@@ -50,6 +50,7 @@ Git viewer is the foundation, not the finished product.
 - src/git_tests.rs: integration tests using temporary Git repositories.
 - src/config.rs: configuration validation and credential handling.
 - src/chat.rs: session conversation state and inline chat presentation.
+- src/review_context.rs: selection-focused agent instructions and patch context.
 - src/agent.rs and src/agent_tests.rs: background API/tool loop and mock HTTP tests.
 - src/code_tools.rs: bounded local listing, literal search, and file reads.
 - flake.nix and flake.lock: Linux development environment and runtime libraries.

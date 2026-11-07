@@ -94,8 +94,10 @@ embedded credentials, queries, or fragments. Requests do not follow redirects.
 `timeout_seconds` applies to each HTTP request including its response body and
 accepts 1–3600 seconds. Answers arrive as complete messages rather than streaming.
 
-Each conversation initially sends the selected code, surrounding patch hunks,
-comparison arguments, and a changed-file overview to your configured provider.
+Each conversation gives the selected code priority, followed by up to 12 patch
+rows on either side, comparison arguments, and a small changed-file overview.
+The AI is instructed to answer your question directly and factually, focusing on
+the selected lines, with wider context available through read-only tools.
 The AI can call read-only tools to list files, search literal text, and read line
 ranges. Tool access is rooted at the repository root, or the launch directory
 outside Git. Tools read **current local working-tree files**, which can differ
