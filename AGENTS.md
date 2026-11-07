@@ -1,4 +1,4 @@
-# Rune Diff
+# Margin
 
 A native Rust diff and review application built with Rune and Rune Kit.
 The goal is an all-in-one diff and review tool with agent support. The current
@@ -44,8 +44,8 @@ Git viewer is the foundation, not the finished product.
   work; completed Markdown replies appear inline. Retry resends a failed pending
   turn without duplicating the user's comment. Threads survive view changes and
   scrolling, but closing the app discards them.
-- JSON config lives in $XDG_CONFIG_HOME/rdiff/config.json, falling back to
-  ~/.config/rdiff/config.json when XDG_CONFIG_HOME is unset, empty, or relative.
+- JSON config lives in $XDG_CONFIG_HOME/margin/config.json, falling back to
+  ~/.config/margin/config.json when XDG_CONFIG_HOME is unset, empty, or relative.
   Configuration and credentials load after the first frame; changes require a
   restart. The app does not create configuration or credential files.
 - AI uses one OpenAI-compatible Chat Completions endpoint with function tools.
@@ -87,7 +87,7 @@ Only launch the UI when the user asks:
 
 To inspect another repository, enter nix develop, build, add this project's
 target/release directory to PATH, then change to the target repository and run
-rune-diff with its Git arguments. See README.md for the exact sequence.
+margin with its Git arguments. See README.md for the exact sequence.
 
 The user prefers to check the UI personally. Do not launch windows, render
 screenshots, or run headless GPU rendering unless explicitly requested.

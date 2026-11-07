@@ -1,12 +1,14 @@
-# Rune Diff
+# Margin
+
+A native Git diff and review application built with Rune and Rune Kit.
 
 ## Install on Ubuntu 26.04
 
 Download the amd64 `.deb` from the
-[latest release](https://github.com/gjolly/rune-diff/releases/latest).
+[latest release](https://github.com/gjolly/margin/releases/latest).
 In the directory containing the download, install it with:
 
-    sudo apt install ./rune-diff_*.deb
+    sudo apt install ./margin_*.deb
 
 APT installs Git and common font, keyboard, and Vulkan libraries. The display
 dependencies accept either a complete Wayland or X11 client stack. APT reuses a
@@ -15,9 +17,9 @@ selects from installed packages, not the current desktop session. GPU drivers
 may have their own display-library dependencies. For an X11 desktop missing
 client libraries, install its complete backend explicitly alongside the package:
 
-    sudo apt install libx11-xcb1 libxcursor1 libxi6 libxkbcommon-x11-0 ./rune-diff_*.deb
+    sudo apt install libx11-xcb1 libxcursor1 libxi6 libxkbcommon-x11-0 ./margin_*.deb
 
-Run `rune-diff` from the repository you want to review. This package
+Run `margin` from the repository you want to review. This package
 targets Ubuntu 26.04 on amd64; older Ubuntu versions are not supported. Your
 desktop session still needs working Vulkan drivers for its GPU.
 
@@ -25,29 +27,29 @@ desktop session still needs working Vulkan drivers for its GPU.
 
 With flakes enabled, install directly from GitHub:
 
-    nix profile add github:gjolly/rune-diff
+    nix profile add github:gjolly/margin
 
-Then run `rune-diff` from the repository you want to review. You can also run it
+Then run `margin` from the repository you want to review. You can also run it
 without installing, from that repository:
 
-    nix run github:gjolly/rune-diff -- --cached
+    nix run github:gjolly/margin -- --cached
 
 To install declaratively, add an input to your system or Home Manager flake:
 
 ```nix
-inputs.rune-diff.url = "github:gjolly/rune-diff";
+inputs.margin.url = "github:gjolly/margin";
 ```
 
 In a module that has access to your flake's `inputs`, use:
 
 ```nix
-environment.systemPackages = [ inputs.rune-diff.packages.${pkgs.stdenv.hostPlatform.system}.default ];
+environment.systemPackages = [ inputs.margin.packages.${pkgs.stdenv.hostPlatform.system}.default ];
 # Home Manager: use home.packages instead of environment.systemPackages.
 ```
 
 Pass `inputs` to NixOS modules through `specialArgs = { inherit inputs; };`, or
 to Home Manager modules through `extraSpecialArgs = { inherit inputs; };`.
-Keep Rune Diff's pinned nixpkgs input for the tested compiler and libraries.
+Keep Margin's pinned nixpkgs input for the tested compiler and libraries.
 The package builds in release mode, runs non-rendering tests, and includes Git
 and library lookup in its launcher. No development shell is needed to use it.
 The flake declares x86-64 and ARM64 Linux; ARM64 has not been tested.
@@ -67,11 +69,11 @@ repository, enter the development shell and invoke the binary there:
     cargo build --release --locked
     export PATH="$PWD/target/release:$PATH"
     cd /path/to/repository
-    rune-diff
-    rune-diff --cached
-    rune-diff HEAD~1 HEAD
-    rune-diff main...HEAD -- src/
-    rune-diff --no-index old.txt new.txt
+    margin
+    margin --cached
+    margin HEAD~1 HEAD
+    margin main...HEAD -- src/
+    margin --no-index old.txt new.txt
 
 Arguments are passed directly to Git, preserving the -- path separator and
 shell-quoted paths. With no arguments, this shows tracked working-tree changes
@@ -129,7 +131,10 @@ closing the application discards them. Clicking **+** on the same range reuses i
 
 ### Configuration
 
-Create `$XDG_CONFIG_HOME/rdiff/config.json`, or `~/.config/rdiff/config.json` when
+If upgrading from Rune Diff, move your existing `rdiff/config.json` to
+`margin/config.json` under the same configuration directory.
+
+Create `$XDG_CONFIG_HOME/margin/config.json`, or `~/.config/margin/config.json` when
 `XDG_CONFIG_HOME` is unset, empty, or relative. Configuration is loaded at startup;
 restart the app after changing configuration or environment variables.
 
@@ -146,7 +151,7 @@ restart the app after changing configuration or environment variables.
 }
 ```
 
-Set the named environment variable in the environment used to launch rune-diff.
+Set the named environment variable in the environment used to launch margin.
 Alternatively, set `"api_key": "your-token"` within `ai`; a nonempty environment
 token takes precedence. Neither credentials nor configuration files are created
 by the app. With missing configuration or credentials, the composer keeps your
@@ -229,15 +234,15 @@ The shell supports x86-64 and ARM64 Linux; only the setup host has been tested.
 ## Distribution
 
 Build the installable Nix package locally with `nix build`; the executable is
-`result/bin/rune-diff`. Nix binaries reference the Nix store and are separate
+`result/bin/margin`. Nix binaries reference the Nix store and are separate
 from the native Ubuntu package.
 
-The [Ubuntu release workflow](https://github.com/gjolly/rune-diff/actions/workflows/ubuntu-deb.yml)
+The [Ubuntu release workflow](https://github.com/gjolly/margin/actions/workflows/ubuntu-deb.yml)
 runs only when a version tag such as `v0.1.0` is pushed. The tag must match
 the version in Cargo.toml. It uses Ubuntu 26.04 amd64 and Rust 1.99.0, runs
 `cargo test --locked`, builds with `cargo build --release --locked`, and checks
 installation before creating a GitHub release with generated notes and attaching
-the `.deb`. A tag `v0.1.0` produces `rune-diff_0.1.0-1_amd64.deb`.
+the `.deb`. A tag `v0.1.0` produces `margin_0.1.0-1_amd64.deb`.
 No source package is built.
 
 To publish, update Cargo.toml and Cargo.lock to the release version, commit the

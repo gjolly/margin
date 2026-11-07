@@ -1,5 +1,5 @@
 {
-  description = "Rune Diff — native Git diff and review application";
+  description = "Margin — native Git diff and review application";
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
   outputs = { self, nixpkgs }:
@@ -16,9 +16,9 @@
           pkgs = import nixpkgs { inherit system; };
           manifest = builtins.fromTOML (builtins.readFile ./Cargo.toml);
         in rec {
-          default = rune-diff;
-          rune-diff = pkgs.rustPlatform.buildRustPackage {
-            pname = "rune-diff";
+          default = margin;
+          margin = pkgs.rustPlatform.buildRustPackage {
+            pname = "margin";
             version = manifest.package.version;
             src = pkgs.lib.fileset.toSource {
               root = ./.;
@@ -33,25 +33,25 @@
             buildInputs = runtimeLibraries pkgs;
             nativeCheckInputs = [ pkgs.git ];
             postInstall = ''
-              install -Dm644 LICENSE $out/share/licenses/rune-diff/LICENSE
-              wrapProgram $out/bin/rune-diff \
+              install -Dm644 LICENSE $out/share/licenses/margin/LICENSE
+              wrapProgram $out/bin/margin \
                 --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.git ]} \
                 --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath (runtimeLibraries pkgs)}:/run/opengl-driver/lib
             '';
             meta = {
               description = "Native Git diff viewer with inline AI conversations";
-              homepage = "https://github.com/gjolly/rune-diff";
+              homepage = "https://github.com/gjolly/margin";
               license = pkgs.lib.licenses.mit;
               platforms = systems;
-              mainProgram = "rune-diff";
+              mainProgram = "margin";
             };
           };
         });
       apps = forEachSystem (system: {
         default = {
           type = "app";
-          program = "${self.packages.${system}.default}/bin/rune-diff";
-          meta.description = "Rune Diff";
+          program = "${self.packages.${system}.default}/bin/margin";
+          meta.description = "Margin";
         };
       });
       devShells = forEachSystem (system:

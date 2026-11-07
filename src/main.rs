@@ -61,7 +61,7 @@ fn load_result(s: &mut Review, result: Result<String, String>) {
             s.diff.set_mode(DiffMode::Split);
         }
         Err(error) => {
-            eprintln!("rune-diff: {error}");
+            eprintln!("margin: {error}");
             s.message = Some(error);
         }
     }
@@ -154,13 +154,13 @@ fn zoom_shortcut(current: u16, ev: &KeyEvent) -> Option<u16> {
 fn main() {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     if args.len() == 1 && matches!(args[0].to_str(), Some("--help" | "-h")) {
-        println!("Usage: rune-diff [git diff arguments]\n\nExamples:\n  rune-diff\n  rune-diff --cached\n  rune-diff HEAD~1 HEAD -- src/\n\nRun from the repository you want to inspect. Ctrl++ / Ctrl+- zoom; Ctrl+0 resets.\nGit output formatting is controlled by the viewer; Rune tooling flags are disabled.");
+        println!("Usage: margin [git diff arguments]\n\nExamples:\n  margin\n  margin --cached\n  margin HEAD~1 HEAD -- src/\n\nRun from the repository you want to inspect. Ctrl++ / Ctrl+- zoom; Ctrl+0 resets.\nGit output formatting is controlled by the viewer; Rune tooling flags are disabled.");
         return;
     }
     let spec = AppSpec {
         on_key: Some(on_key),
         families: ("Inter", "ui-monospace, Inter"),
-        ..AppSpec::new("Git diff", (1100.0, 720.0), init, view)
+        ..AppSpec::new("Margin", (1100.0, 720.0), init, view)
     };
     // All process arguments belong to Git, including its path separator.
     let app = App::new(spec).args(Vec::<String>::new()).modifier_keys();

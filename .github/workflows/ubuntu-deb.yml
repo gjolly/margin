@@ -51,8 +51,8 @@ jobs:
               x11) apt-get install --no-install-recommends -y libx11-xcb1 libxcursor1 libxi6 libxkbcommon-x11-0 ;;
             esac
             apt-get install --no-install-recommends -y /packages/*.deb python3
-            dpkg --status rune-diff | grep -qx "Status: install ok installed"
-            ldd /usr/bin/rune-diff > /tmp/linked-libraries
+            dpkg --status margin | grep -qx "Status: install ok installed"
+            ldd /usr/bin/margin > /tmp/linked-libraries
             cat /tmp/linked-libraries
             ! grep -q "not found" /tmp/linked-libraries
             python3 - <<"PY"
@@ -77,4 +77,4 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           gh release create "$GITHUB_REF_NAME" target/debian/*.deb \
-            --verify-tag --title "Rune Diff $GITHUB_REF_NAME" --generate-notes
+            --verify-tag --title "Margin $GITHUB_REF_NAME" --generate-notes

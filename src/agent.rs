@@ -29,7 +29,7 @@ impl Agent {
             .timeout(connection.timeout).build().map_err(|_| "Could not initialize the AI HTTP client.")?;
         let connection = Arc::new(connection);
         let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<Job>();
-        std::thread::Builder::new().name("rdiff-agent".into()).spawn(move || {
+        std::thread::Builder::new().name("margin-agent".into()).spawn(move || {
             runtime.block_on(async move {
                 while let Some(job) = receiver.recv().await {
                     let (connection, client, root) = (connection.clone(), client.clone(), root.clone());

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 project_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-binary=$(realpath "${1:-$project_dir/target/release/rune-diff}")
+binary=$(realpath "${1:-$project_dir/target/release/margin}")
 output_dir=${2:-$project_dir/target/debian}
 mkdir -p "$output_dir"
 output_dir=$(realpath "$output_dir")
@@ -21,24 +21,24 @@ fi
 work_dir=$(mktemp -d)
 trap 'rm -rf -- "$work_dir"' EXIT
 package_dir=$work_dir/package
-install -Dm755 "$binary" "$package_dir/usr/bin/rune-diff"
-strip --strip-unneeded "$package_dir/usr/bin/rune-diff"
-install -Dm644 "$project_dir/LICENSE" "$package_dir/usr/share/doc/rune-diff/copyright"
-install -Dm644 "$project_dir/README.md" "$package_dir/usr/share/doc/rune-diff/README.md"
+install -Dm755 "$binary" "$package_dir/usr/bin/margin"
+strip --strip-unneeded "$package_dir/usr/bin/margin"
+install -Dm644 "$project_dir/LICENSE" "$package_dir/usr/share/doc/margin/copyright"
+install -Dm644 "$project_dir/README.md" "$package_dir/usr/share/doc/margin/README.md"
 
 # dpkg-shlibdeps requires package metadata even for a binary-only build.
 mkdir -p "$work_dir/debian" "$package_dir/DEBIAN"
 cat > "$work_dir/debian/control" <<'EOF'
-Source: rune-diff
+Source: margin
 Section: devel
 Priority: optional
-Maintainer: Rune Diff contributors <gjolly@users.noreply.github.com>
+Maintainer: Margin contributors <gjolly@users.noreply.github.com>
 
-Package: rune-diff
+Package: margin
 Architecture: any
 Description: Native Git diff and review application
 EOF
-linked_dependencies=$(cd "$work_dir" && dpkg-shlibdeps -O -e"$package_dir/usr/bin/rune-diff")
+linked_dependencies=$(cd "$work_dir" && dpkg-shlibdeps -O -e"$package_dir/usr/bin/margin")
 linked_dependencies=${linked_dependencies#shlibs:Depends=}
 if [[ -z "$linked_dependencies" || "$linked_dependencies" == *$'\n'* ]]; then
   echo "Could not determine linked runtime dependencies." >&2
@@ -52,13 +52,13 @@ fi
 # XRandR uses the XCB protocol directly and does not need libXrandr.
 display_dependencies="libwayland-cursor0 | libx11-xcb1, libwayland-cursor0 | libxcursor1, libwayland-cursor0 | libxi6, libwayland-cursor0 | libxkbcommon-x11-0"
 cat > "$package_dir/DEBIAN/control" <<EOF
-Package: rune-diff
+Package: margin
 Version: $version
 Architecture: $architecture
 Section: devel
 Priority: optional
-Maintainer: Rune Diff contributors <gjolly@users.noreply.github.com>
-Homepage: https://github.com/gjolly/rune-diff
+Maintainer: Margin contributors <gjolly@users.noreply.github.com>
+Homepage: https://github.com/gjolly/margin
 Installed-Size: $(du -sk "$package_dir/usr" | cut -f1)
 Depends: $linked_dependencies, git, libfontconfig1, libxkbcommon0, libvulkan1, $display_dependencies
 Recommends: fonts-dejavu-core
@@ -67,4 +67,4 @@ Description: Native Git diff and review application
  AI conversations using an OpenAI-compatible endpoint.
 EOF
 
-dpkg-deb --root-owner-group --build "$package_dir" "$output_dir/rune-diff_${version}_${architecture}.deb"
+dpkg-deb --root-owner-group --build "$package_dir" "$output_dir/margin_${version}_${architecture}.deb"

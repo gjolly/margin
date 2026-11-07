@@ -2974,7 +2974,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rune-diff"
+name = "margin"
 version = "0.1.0"
 dependencies = [
  "ignore",

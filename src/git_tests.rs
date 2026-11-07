@@ -8,7 +8,7 @@ struct Repo(std::path::PathBuf);
 
 impl Repo {
     fn new() -> Self {
-        let dir = std::env::temp_dir().join(format!("rune-diff-test-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+        let dir = std::env::temp_dir().join(format!("margin-test-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
         fs::create_dir(&dir).unwrap();
         let repo = Self(dir);
         repo.git(&["init", "-q"]);

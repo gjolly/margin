@@ -57,14 +57,14 @@ fn config_path(xdg: Option<String>, home: Option<String>) -> Result<PathBuf, Str
         Some(path) if PathBuf::from(&path).is_absolute() => PathBuf::from(path),
         _ => PathBuf::from(home.filter(|s| !s.is_empty()).ok_or("Cannot locate configuration: HOME is unset.")?).join(".config"),
     };
-    Ok(root.join("rdiff/config.json"))
+    Ok(root.join("margin/config.json"))
 }
 
 pub fn load() -> Result<Connection, String> {
     let path = config_path(std::env::var("XDG_CONFIG_HOME").ok(), std::env::var("HOME").ok())?;
     let mut bytes = Vec::new();
     std::fs::File::open(&path).and_then(|file| file.take(1024 * 1024 + 1).read_to_end(&mut bytes))
-        .map_err(|_| format!("Configure AI in {} and restart rune-diff. See README for an example.", path.display()))?;
+        .map_err(|_| format!("Configure AI in {} and restart margin. See README for an example.", path.display()))?;
     if bytes.len() > 1024 * 1024 {
         return Err("AI configuration exceeds 1 MiB.".into());
     }
@@ -130,8 +130,8 @@ mod tests {
 
     #[test]
     fn paths_follow_xdg_and_home() {
-        assert_eq!(config_path(Some("/config".into()), None).unwrap(), PathBuf::from("/config/rdiff/config.json"));
-        assert_eq!(config_path(Some("relative".into()), Some("/user".into())).unwrap(), PathBuf::from("/user/.config/rdiff/config.json"));
+        assert_eq!(config_path(Some("/config".into()), None).unwrap(), PathBuf::from("/config/margin/config.json"));
+        assert_eq!(config_path(Some("relative".into()), Some("/user".into())).unwrap(), PathBuf::from("/user/.config/margin/config.json"));
         assert!(config_path(None, None).is_err());
     }
 

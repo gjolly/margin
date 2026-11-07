@@ -120,7 +120,7 @@ pub fn send(s: &mut Review, id: usize, retry: bool, tx: &mut Tx) {
     }, move |answer| {
         handle.update(move |s, tx| { tx.instant(); s.chats.finish(id, answer); });
     }) {
-        s.chats.finish(id, Err("AI worker is unavailable. Restart rune-diff.".into()));
+        s.chats.finish(id, Err("AI worker is unavailable. Restart margin.".into()));
     }
 }
 
