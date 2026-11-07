@@ -95,7 +95,10 @@ impl Scrollbar {
     pub fn build(&self, content: El, k: &Kit) -> El {
         let position = self.position.clone();
         let viewport = self.viewport;
-        let content = if self.left { content.pl(WIDTH) } else { content.pr(WIDTH) };
+        // Reserve the gutter outside the content: padding the diff itself lets its
+        // absolute sticky header span the padding and extend under the scrollbar.
+        let gutter = col().w_full().grow(1.0).min_h(0.0);
+        let content = if self.left { gutter.pl(WIDTH) } else { gutter.pr(WIDTH) }.child(content);
         col().key(self.area_key).w_full().grow(1.0).min_h(0.0)
             .child(content)
             .child(el().key(self.bar_key).absolute(0.0, 0.0)
@@ -145,6 +148,31 @@ mod tests {
     fn tick(rt: &mut Runtime<App>) {
         rt.frame(1.0 / 60.0);
         rt.state.bar.follow(rt, rt.state.zoom);
+    }
+
+    #[test]
+    fn sticky_file_counts_align_with_list_counts_outside_scrollbar() {
+        for zoom in [0.5, 1.0, 2.0] {
+            for mode in [crate::diff::DiffMode::Split, crate::diff::DiffMode::Unified] {
+                let mut patch = "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1,200 +1,200 @@\n".to_owned();
+                for _ in 0..200 { patch.push_str("-old\n+new\n"); }
+                let mut diff = DiffState::new(parse(&patch));
+                diff.set_mode(mode);
+                let app = App { diff, bar: Scrollbar::new(), zoom, builds: Cell::new(0) };
+                let mut rt = Runtime::new(app, view, (600.0, 400.0), Env::new(true, 1.0));
+                for _ in 0..90 { tick(&mut rt); }
+                let (list_x, _) = rt.find("df0/inner/dels").expect("list deletion count");
+                rt.wheel(200.0, 200.0, -100.0);
+                for _ in 0..90 { tick(&mut rt); }
+                let (sticky_x, _) = rt.find("sticky/inner/dels").expect("sticky deletion count");
+                let ([sticky_left, _, sticky_width, _], _) = rt.presented("sticky").unwrap();
+                let ([bar_x, _, _, _], _) = rt.presented("diff-scrollbar").unwrap();
+                assert!((sticky_x - list_x).abs() < 1.0,
+                    "list {list_x}, sticky {sticky_x}, zoom {zoom}, mode {mode:?}");
+                assert!((sticky_left + sticky_width - bar_x).abs() < 1.0,
+                    "sticky edge {}, scrollbar {bar_x}, zoom {zoom}", sticky_left + sticky_width);
+            }
+        }
     }
 
     #[test]

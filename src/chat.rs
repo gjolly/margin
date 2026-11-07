@@ -48,7 +48,10 @@ impl Chats {
         if matches!((position(anchor.start), position(anchor.end)), (Some(a), Some(b)) if a > b) {
             std::mem::swap(&mut anchor.start, &mut anchor.end);
         }
-        if self.threads.iter().any(|t| t.anchor == anchor) { return; }
+        if let Some(id) = self.threads.iter().position(|t| t.anchor == anchor) {
+            self.focus(id);
+            return;
+        }
         if self.threads.len() >= THREAD_LIMIT {
             self.notice = Some("Session reached its 64-thread limit. Restart to begin a new session.".into());
             return;
@@ -59,8 +62,15 @@ impl Chats {
                 json!({"role":"system","content":review_context::SYSTEM_PROMPT}),
                 json!({"role":"user","content":context}),
             ] });
+        self.focus(self.threads.len() - 1);
         diff.set_annotations(self.threads.iter().enumerate().map(|(id, t)|
             Annotation::new(t.anchor.file, t.anchor.end, id.to_string())).collect());
+    }
+
+    fn focus(&mut self, id: usize) {
+        for (index, thread) in self.threads.iter_mut().enumerate() {
+            thread.draft.focused = index == id;
+        }
     }
 
     pub fn active(&self) -> usize { self.threads.iter().filter(|t| t.busy).count() }
@@ -195,6 +205,22 @@ mod tests {
     }
 
     #[test]
+    fn opening_and_reopening_focuses_only_the_selected_composer() {
+        let (mut chats, mut diff, anchor) = fixture();
+        chats.open(&mut diff, anchor);
+        assert!(chats.threads[0].draft.focused);
+        chats.threads[0].draft.replace_text("Keep this draft");
+        chats.open(&mut diff, LineRange::line(0, LineRef::new(Side::New, 1)));
+        assert!(!chats.threads[0].draft.focused);
+        assert!(chats.threads[1].draft.focused);
+        chats.open(&mut diff, anchor);
+        assert_eq!(chats.threads.len(), 2);
+        assert!(chats.threads[0].draft.focused);
+        assert!(!chats.threads[1].draft.focused);
+        assert_eq!(chats.threads[0].draft.text, "Keep this draft");
+    }
+
+    #[test]
     fn anchors_and_drafts_survive_reopening_and_retry() {
         let (mut chats, mut diff, anchor) = fixture();
         chats.open(&mut diff, anchor);
@@ -291,7 +317,6 @@ mod tests {
         state.chats = chats;
         state.diff = diff;
         state.chats.open(&mut state.diff, anchor);
-        state.chats.threads[0].draft.focused = true;
         let mut runtime = rune::Runtime::new(state, input, (600.0, 400.0), rune::Env::new(true, 1.0));
         runtime.on_key = Some(crate::on_key);
         runtime.frame(0.0);

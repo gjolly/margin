@@ -107,6 +107,7 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
                 .on_comment(|s: &mut Review, lines, tx| {
                     tx.instant();
                     s.chats.open(&mut s.diff, lines);
+                    s.search.input.focused = false;
                 })
                 .annotation(move |s, annotation| chat::annotation(s, annotation, &kit))
                 .build(s, &k)
