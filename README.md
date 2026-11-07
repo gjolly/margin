@@ -136,10 +136,19 @@ The [Ubuntu release workflow](https://github.com/gjolly/margin/actions/workflows
 
 To build from a release source archive, extract it and run `cargo build --release --locked --offline` inside its directory, with the native build dependencies described below installed. The included `.cargo/config.toml` uses the bundled dependency sources. Keep this source archive available alongside the binary when redistributing a release.
 
-To publish, update Cargo.toml and Cargo.lock to the release version, commit the changes, and push the corresponding tag:
+To publish, set the version in Cargo.toml, then synchronize Cargo.lock and validate the release before committing. For example, for `0.2.0`:
 
-    git tag v0.1.0
-    git push origin v0.1.0
+    nix develop -c cargo check --offline
+    nix develop -c cargo test --locked
+    nix develop -c cargo build --release --locked
+    git diff -- Cargo.toml Cargo.lock
+    git add Cargo.toml Cargo.lock
+    git commit -m "Release v0.2.0"
+    git tag v0.2.0
+    git push origin HEAD
+    git push origin v0.2.0
+
+The first command updates the root package version in Cargo.lock without upgrading dependencies; omit `--offline` if dependencies are not cached. Commit both files before tagging: `--locked` in CI rejects a stale lockfile, even when only the application's version changed. Re-running a failed workflow uses the same tagged commit, so it cannot pick up a later fix. If a release tag has already been pushed, publish a new patch version with the fix, or deliberately replace the failed tag if it has not been released or consumed.
 
 To build a `.deb` yourself, use Ubuntu 26.04 (or a Podman container of that release), install Rust 1.99.0 with rustup, and install the native build tools:
 
