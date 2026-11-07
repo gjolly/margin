@@ -2,6 +2,8 @@
 
 Software development is now about prompting agents and reviewing their work with their help. Margin let's you do that, you can use it just like you would use git diff, it displays the diff and you can ask your favorite LLM what the code that it has just written does.
 
+    margin HEAD^
+
 ![Margin application screenshot](docs/images/screenshot.png)
 
 ## Install on Ubuntu 26.04
