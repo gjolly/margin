@@ -9,6 +9,7 @@ mod code_tools;
 mod agent;
 mod chat;
 mod review_context;
+mod scrollbar;
 
 struct Review {
     diff: DiffState,
@@ -16,12 +17,13 @@ struct Review {
     summary: String,
     zoom_percent: u16,
     chats: chat::Chats,
+    scrollbar: scrollbar::Scrollbar,
 }
 
 fn init() -> Review {
     let mut diff = DiffState::new(Vec::new());
     diff.set_mode(DiffMode::Split);
-    Review { diff, message: Some("Loading Git diff…".into()), summary: "0 files  +0 −0".into(), zoom_percent: 100, chats: chat::Chats::new() }
+    Review { diff, message: Some("Loading Git diff…".into()), summary: "0 files  +0 −0".into(), zoom_percent: 100, chats: chat::Chats::new(), scrollbar: scrollbar::Scrollbar::new() }
 }
 
 fn load_result(s: &mut Review, result: Result<String, String>) {
@@ -80,6 +82,7 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
         None => {
             let kit = k.clone();
             DiffView::new(|s: &Review| &s.diff, |s: &mut Review| &mut s.diff)
+                .key("review-diff")
                 .on_comment(|s: &mut Review, lines, tx| {
                     tx.instant();
                     s.chats.open(&mut s.diff, lines);
@@ -88,6 +91,7 @@ fn view(s: &Review, cx: &mut Cx<Review>) -> El {
                 .build(s, &k)
         },
     };
+    let diff = s.scrollbar.build(diff, &k);
     // Only size changes rebuild this view; scrolling does not.
     let [width, height] = cx.layout_size("viewport").unwrap_or([1100.0, 720.0]);
     let zoom = s.zoom_percent as f32 / 100.0;
@@ -143,7 +147,8 @@ fn main() {
     let app = App::new(spec).args(Vec::<String>::new()).modifier_keys();
     let handle = app.handle();
     let mut pending = Some(args);
-    app.on_ready(move |_| {
+    app.on_frame_drawn(|rt| rt.state.scrollbar.follow(rt, rt.state.zoom_percent as f32 / 100.0))
+    .on_ready(move |_| {
         let Some(args) = pending.take() else { return };
         let handle = handle.clone();
         std::thread::spawn(move || {

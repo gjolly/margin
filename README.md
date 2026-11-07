@@ -43,6 +43,8 @@ binary changes show Git's binary-file summary.
 Ctrl++ (or Ctrl+=) enlarges the whole UI; Ctrl+- shrinks it.
 Zoom changes in 10% steps from 50% to 200%; Ctrl+0 resets to 100%.
 Zoom lasts for the current session. j/k navigate hunks; ]/[ navigate files.
+The scrollbar on the right shows your position when the diff overflows vertically.
+Drag its thumb or click the track to move through the diff.
 
 ## Inline AI conversations
 
