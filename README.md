@@ -51,8 +51,17 @@ Drag its thumb or click the track to move through the diff.
 Hover a text line's gutter and click the blue **+** to open an inline composer.
 You can also select a range using the line numbers, then click its **+**.
 Type a question and click **Send** or press **Ctrl+Enter**. Enter inserts a newline.
-A small spinner stays below your comment while the AI works. Completed replies
+A small spinner and activity label stay below your comment while the AI works,
+showing file listings, search queries, and files being read. While a request is
+in flight, the label says “Waiting for AI response…”; the non-streaming requests
+do not expose a distinct thinking phase. Completed replies
 appear below it; send another message in the same composer to continue.
+Each reply ends with provider-reported token usage (total, input, and output),
+elapsed time, API request count, and tool-call count for that successful turn,
+including all tool round trips. Missing usage is marked as unavailable or partial;
+failed attempts before a retry are not included. Input totals include conversation
+history resent with each request. Cost is not estimated because provider and model
+pricing are not configured.
 Drafts and threads survive scrolling and switching views, but are **session only**:
 closing the application discards them. Clicking **+** on the same range reuses its thread.
 

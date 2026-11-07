@@ -66,12 +66,13 @@ async fn tool_loop_preserves_history_and_extra_fields() {
     let client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).timeout(config.timeout).build().unwrap();
     let mut history = question();
     history[0]["content"] = json!("Explain this code containing TEST_SECRET");
-    let answer = run(&client, &config, dir.path().to_owned(), history).await.unwrap();
+    let answer = run(&client, &config, dir.path().to_owned(), history, &|_| {}).await.unwrap();
     assert_eq!(answer.text, "It returns 42. [redacted]");
+    assert!(answer.stats.label().starts_with("Token usage not reported"));
     assert_eq!(answer.history.len(), 4);
     let mut followup = answer.history;
     followup.push(json!({"role":"user","content":"Why?"}));
-    run(&client, &config, dir.path().to_owned(), followup).await.unwrap();
+    run(&client, &config, dir.path().to_owned(), followup, &|_| {}).await.unwrap();
     server.join.join().unwrap();
     let requests = server.requests.lock().unwrap();
     assert_eq!(requests.len(), 3);
@@ -105,7 +106,7 @@ async fn provider_failures_are_bounded_and_do_not_expose_secrets() {
         let config = test_connection(&server.url, json!({}));
         let client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).timeout(config.timeout).build().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        let error = run(&client, &config, dir.path().to_owned(), question()).await.err().unwrap();
+        let error = run(&client, &config, dir.path().to_owned(), question(), &|_| {}).await.err().unwrap();
         assert!(error.contains(expected), "expected {expected}, got {error}");
         assert!(!error.contains("TEST_SECRET"));
         server.join.join().unwrap();
@@ -118,11 +119,67 @@ async fn unknown_tools_return_errors_and_request_limit_stops_loops() {
     let server = mock((0..16).map(|_| turn()).collect());
     let config = test_connection(&server.url, json!({}));
     let dir = tempfile::tempdir().unwrap();
-    let error = run(&reqwest::Client::new(), &config, dir.path().to_owned(), question()).await.err().unwrap();
+    let error = run(&reqwest::Client::new(), &config, dir.path().to_owned(), question(), &|_| {}).await.err().unwrap();
     assert!(error.contains("16 request limit"));
     server.join.join().unwrap();
     let requests = server.requests.lock().unwrap();
     assert!(requests[1].1["messages"][2]["content"].as_str().unwrap().contains("Unknown tool"));
     let history = vec![json!({"role":"user","content":"x".repeat(HISTORY_LIMIT)})];
     assert!(within_budget(&history).is_err());
+}
+
+#[tokio::test]
+async fn progress_tracks_tools_and_returns_to_waiting() {
+    let calls: Vec<Value> = [
+        ("list_files", json!({"path":"src"})),
+        ("search_code", json!({"query":"answer", "path":"src"})),
+        ("read_file", json!({"path":"src/sample.rs"})),
+    ].into_iter().enumerate().map(|(i, (name, args))|
+        json!({"id":format!("call-{i}"),"type":"function","function":{"name":name,"arguments":args.to_string()}})
+    ).collect();
+    let with_usage = |message: Value, usage: Value| {
+        let mut response: Value = serde_json::from_str(&reply(message).1).unwrap();
+        response["usage"] = usage;
+        (200, response.to_string(), Duration::ZERO)
+    };
+    let server = mock(vec![
+        with_usage(json!({"role":"assistant","tool_calls":calls}), json!({"prompt_tokens":100,"completion_tokens":20,"total_tokens":120})),
+        with_usage(json!({"role":"assistant","content":"Done"}), json!({"prompt_tokens":150,"completion_tokens":30,"total_tokens":180})),
+        with_usage(json!({"role":"assistant","content":"Follow-up"}), json!({"prompt_tokens":200,"completion_tokens":10,"total_tokens":210})),
+    ]);
+    let config = test_connection(&server.url, json!({}));
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("src")).unwrap();
+    std::fs::write(dir.path().join("src/sample.rs"), "fn answer() {}\n").unwrap();
+    let activities = Mutex::new(Vec::new());
+    let progress = |activity| activities.lock().unwrap().push(activity);
+    let answer = run(&reqwest::Client::new(), &config, dir.path().to_owned(), question(), &progress).await.unwrap();
+    assert_eq!(answer.text, "Done");
+    let stats = answer.stats.label();
+    assert!(stats.starts_with("300 tokens · 250 input · 50 output"));
+    assert!(stats.ends_with("2 API requests · 3 tool calls"));
+    assert!(!stats.contains("partial"));
+    assert_eq!(*activities.lock().unwrap(), [
+        "Waiting for AI response…", "Preparing code tools…", "Listing files in src…",
+        "Searching for “answer” in src…", "Reading src/sample.rs…", "Waiting for AI response…",
+    ]);
+    let mut history = answer.history;
+    history.push(json!({"role":"user","content":"Why?"}));
+    let followup = run(&reqwest::Client::new(), &config, dir.path().to_owned(), history, &|_| {}).await.unwrap();
+    let stats = followup.stats.label();
+    assert!(stats.starts_with("210 tokens · 200 input · 10 output"));
+    assert!(stats.ends_with("1 API request · 0 tool calls"));
+    server.join.join().unwrap();
+}
+
+#[test]
+fn activity_details_are_bounded_and_redacted() {
+    let config = test_connection("http://localhost/v1", json!({}));
+    let activity = tool_activity("read_file", &json!({"path":"src/TEST_SECRET\nfile.rs"}).to_string(), &config);
+    assert_eq!(activity, "Reading src/[redacted]file.rs…");
+    let activity = tool_activity("search_code", &json!({"query":"é".repeat(1000), "path":"x".repeat(1000)}).to_string(), &config);
+    assert!(activity.chars().count() < 300);
+    assert_eq!(tool_activity("read_file", "invalid JSON", &config), "Reading file…");
+    assert_eq!(tool_activity("list_files", "{}", &config), "Listing files…");
+    assert_eq!(tool_activity("shell", "{}", &config), "Processing tool call…");
 }

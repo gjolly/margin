@@ -8,12 +8,19 @@ use serde_json::{Value, json};
 const THREAD_LIMIT: usize = 64;
 const ACTIVE_LIMIT: usize = 4;
 
+pub struct Post {
+    pub user: bool,
+    pub body: String,
+    pub stats: Option<String>,
+}
+
 pub struct Thread {
     pub anchor: LineRange,
     pub draft: TextEdit,
     pub history: Vec<Value>,
-    pub posts: Vec<(bool, String)>,
+    pub posts: Vec<Post>,
     pub busy: bool,
+    pub activity: String,
     pub pending: bool,
     pub error: Option<String>,
 }
@@ -47,7 +54,7 @@ impl Chats {
         }
         let context = review_context::build(diff, anchor, &self.comparison);
         self.threads.push(Thread { anchor, draft: TextEdit::new(""), posts: Vec::new(), busy: false,
-            pending: false, error: None, history: vec![
+            activity: String::new(), pending: false, error: None, history: vec![
                 json!({"role":"system","content":review_context::SYSTEM_PROMPT}),
                 json!({"role":"user","content":context}),
             ] });
@@ -71,22 +78,30 @@ impl Chats {
                 return None;
             }
             thread.history.push(message);
-            thread.posts.push((true, content));
+            thread.posts.push(Post { user: true, body: content, stats: None });
             thread.draft.clear();
             thread.pending = true;
         }
         thread.error = None;
         thread.busy = true;
+        thread.activity = "Waiting for AI response…".into();
         Some(thread.history.clone())
+    }
+
+    pub fn progress(&mut self, id: usize, activity: String) {
+        if let Some(thread) = self.threads.get_mut(id).filter(|t| t.busy) {
+            thread.activity = activity;
+        }
     }
 
     pub fn finish(&mut self, id: usize, answer: Result<Answer, String>) {
         let Some(thread) = self.threads.get_mut(id) else { return };
         thread.busy = false;
+        thread.activity.clear();
         match answer {
             Ok(answer) => {
                 thread.history = answer.history;
-                thread.posts.push((false, answer.text));
+                thread.posts.push(Post { user: false, body: answer.text, stats: Some(answer.stats.label()) });
                 thread.pending = false;
                 thread.error = None;
             }
@@ -99,7 +114,10 @@ pub fn send(s: &mut Review, id: usize, retry: bool, tx: &mut Tx) {
     let (Some(agent), Some(handle)) = (s.chats.agent.clone(), s.chats.handle.clone()) else { return };
     let Some(history) = s.chats.prepare(id, retry) else { return };
     tx.instant();
-    if !agent.send(history, move |answer| {
+    let progress_handle = handle.clone();
+    if !agent.send(history, move |activity| {
+        progress_handle.update(move |s, tx| { tx.instant(); s.chats.progress(id, activity); });
+    }, move |answer| {
         handle.update(move |s, tx| { tx.instant(); s.chats.finish(id, answer); });
     }) {
         s.chats.finish(id, Err("AI worker is unavailable. Restart rune-diff.".into()));
@@ -114,16 +132,20 @@ pub fn annotation(s: &Review, a: &Annotation, k: &Kit) -> El {
         .fill(k.c.layer_01).border(1.0, k.c.border_weak)
         .child(text(format!("AI chat · {} {} – {} {}", side(t.anchor.start.side), t.anchor.start.line, side(t.anchor.end.side), t.anchor.end.line))
             .font(k.ty.ui_medium).color(k.c.text_muted));
-    for (i, (user, body)) in t.posts.iter().enumerate() {
+    for (i, message) in t.posts.iter().enumerate() {
+        let Post { user, body, stats } = message;
         let mut post = col().key(format!("post-{i}")).w_full().gap(4.0)
             .child(text(if *user { "You" } else { "Assistant" }).font(k.ty.ui_medium).color(k.c.text_base));
         post = if *user { post.child(text(body.clone()).font(k.ty.body).color(k.c.text_base).wrap()) }
             else { post.child(Markdown::new(body.clone()).tasks_read_only().selectable(true).scroll_wide(true).build(k)) };
+        if let Some(stats) = stats {
+            post = post.child(text(stats.clone()).font(k.ty.ui).color(k.c.text_faint).wrap());
+        }
         card = card.child(post);
     }
     if t.busy {
         card = card.child(row().gap(6.0).items_center().child(Spinner::new().size(14.0).build(k))
-            .child(text("Working…").font(k.ty.ui).color(k.c.text_muted)));
+            .child(text(t.activity.clone()).font(k.ty.ui).color(k.c.text_muted).wrap()));
     }
     if let Some(error) = &t.error {
         card = card.child(text(error.clone()).font(k.ty.ui).color(k.c.text_muted).wrap());
@@ -185,9 +207,34 @@ mod tests {
         let retry = chats.prepare(0, true).unwrap();
         assert_eq!(retry, history);
         assert_eq!(chats.threads[0].posts.len(), 1);
-        chats.finish(0, Ok(Answer { history, text: "Answer".into() }));
+        chats.finish(0, Ok(Answer { history, text: "Answer".into(), stats: Default::default() }));
         assert_eq!(chats.threads[0].posts.len(), 2);
+        assert!(chats.threads[0].posts[0].stats.is_none());
+        assert!(chats.threads[0].posts[1].stats.as_ref().unwrap().contains("Token usage not reported"));
         assert!(!chats.threads[0].pending);
+        assert!(!chats.threads[0].busy);
+    }
+
+    #[test]
+    fn activity_is_isolated_cleared_and_reset_on_retry() {
+        let (mut chats, mut diff, anchor) = fixture();
+        chats.open(&mut diff, anchor);
+        chats.open(&mut diff, LineRange::line(0, LineRef::new(Side::New, 1)));
+        for id in 0..2 {
+            chats.threads[id].draft.replace_text("question");
+            chats.prepare(id, false).unwrap();
+        }
+        chats.progress(0, "Reading sample.rs…".into());
+        assert_eq!(chats.threads[0].activity, "Reading sample.rs…");
+        assert_eq!(chats.threads[1].activity, "Waiting for AI response…");
+        chats.finish(0, Err("failed".into()));
+        assert!(chats.threads[0].activity.is_empty());
+        chats.progress(0, "late update".into());
+        assert!(chats.threads[0].activity.is_empty());
+        chats.prepare(0, true).unwrap();
+        assert_eq!(chats.threads[0].activity, "Waiting for AI response…");
+        chats.finish(0, Ok(Answer { history: Vec::new(), text: "Done".into(), stats: Default::default() }));
+        assert!(chats.threads[0].activity.is_empty());
         assert!(!chats.threads[0].busy);
     }
 

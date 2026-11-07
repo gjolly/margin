@@ -7,6 +7,7 @@ mod git;
 mod config;
 mod code_tools;
 mod agent;
+mod usage;
 mod chat;
 mod review_context;
 mod scrollbar;

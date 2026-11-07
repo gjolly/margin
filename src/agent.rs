@@ -1,7 +1,7 @@
 //! OpenAI-compatible tool loop, isolated from presentation and credentials UI.
-use crate::{code_tools::{self, CodeTools}, config::Connection};
+use crate::{code_tools::{self, CodeTools}, config::Connection, usage::TurnStats};
 use serde_json::{Value, json};
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc, time::Instant};
 
 pub const HISTORY_LIMIT: usize = 512 * 1024;
 const RESPONSE_LIMIT: usize = 2 * 1024 * 1024;
@@ -9,10 +9,12 @@ const RESPONSE_LIMIT: usize = 2 * 1024 * 1024;
 pub struct Answer {
     pub history: Vec<Value>,
     pub text: String,
+    pub stats: TurnStats,
 }
 
 type Completion = Box<dyn FnOnce(Result<Answer, String>) + Send>;
-struct Job { history: Vec<Value>, complete: Completion }
+type Progress = Box<dyn Fn(String) + Send + Sync>;
+struct Job { history: Vec<Value>, progress: Progress, complete: Completion }
 
 #[derive(Clone)]
 pub struct Agent {
@@ -32,7 +34,7 @@ impl Agent {
                 while let Some(job) = receiver.recv().await {
                     let (connection, client, root) = (connection.clone(), client.clone(), root.clone());
                     tokio::spawn(async move {
-                        let result = run(&client, &connection, root, job.history).await;
+                        let result = run(&client, &connection, root, job.history, &*job.progress).await;
                         (job.complete)(result);
                     });
                 }
@@ -41,8 +43,9 @@ impl Agent {
         Ok(Self { sender })
     }
 
-    pub fn send(&self, history: Vec<Value>, complete: impl FnOnce(Result<Answer, String>) + Send + 'static) -> bool {
-        self.sender.send(Job { history, complete: Box::new(complete) }).is_ok()
+    pub fn send(&self, history: Vec<Value>, progress: impl Fn(String) + Send + Sync + 'static,
+        complete: impl FnOnce(Result<Answer, String>) + Send + 'static) -> bool {
+        self.sender.send(Job { history, progress: Box::new(progress), complete: Box::new(complete) }).is_ok()
     }
 }
 
@@ -52,7 +55,7 @@ fn within_budget(history: &[Value]) -> Result<(), String> {
     } else { Ok(()) }
 }
 
-async fn response(client: &reqwest::Client, connection: &Connection, history: &[Value]) -> Result<Value, String> {
+async fn response(client: &reqwest::Client, connection: &Connection, history: &[Value]) -> Result<(Value, Value), String> {
     let mut body = connection.extra_body.clone();
     body.extend(json!({"model":connection.model,"messages":history,"tools":code_tools::definitions(),
         "tool_choice":"auto","stream":false,"n":1}).as_object().unwrap().clone());
@@ -73,7 +76,7 @@ async fn response(client: &reqwest::Client, connection: &Connection, history: &[
     redact_value(&mut message, connection);
     // An exhausted output budget is not a completed response; don't silently post it.
     if value["choices"][0]["finish_reason"] == "length" { return Err("AI response hit its output limit. Increase the provider's output token parameter and restart.".into()); }
-    Ok(message)
+    Ok((message, value["usage"].clone()))
 }
 
 fn redact_value(value: &mut Value, connection: &Connection) {
@@ -85,15 +88,20 @@ fn redact_value(value: &mut Value, connection: &Connection) {
     }
 }
 
-async fn run(client: &reqwest::Client, connection: &Connection, root: PathBuf, mut history: Vec<Value>) -> Result<Answer, String> {
+async fn run(client: &reqwest::Client, connection: &Connection, root: PathBuf, mut history: Vec<Value>,
+    progress: &(dyn Fn(String) + Send + Sync)) -> Result<Answer, String> {
     // Code or a pasted question may itself contain the configured credential.
     // Scrub message content before any request, including the initial patch context.
     for message in &mut history { redact_value(message, connection); }
     let mut tools: Option<Arc<CodeTools>> = None;
+    let started = Instant::now();
+    let mut stats = TurnStats::default();
     let mut calls = 0;
     for _ in 0..16 {
         within_budget(&history)?;
-        let message = response(client, connection, &history).await?;
+        progress("Waiting for AI response…".into());
+        let (message, usage) = response(client, connection, &history).await?;
+        stats.record(&usage);
         let tool_calls = match message.get("tool_calls") {
             None | Some(Value::Null) => Vec::new(),
             Some(Value::Array(calls)) => calls.clone(),
@@ -104,7 +112,9 @@ async fn run(client: &reqwest::Client, connection: &Connection, root: PathBuf, m
                 .ok_or("AI endpoint returned no answer text.")?.to_owned();
             history.push(message);
             within_budget(&history)?;
-            return Ok(Answer { history, text });
+            stats.elapsed = started.elapsed();
+            stats.tool_calls = calls;
+            return Ok(Answer { history, text, stats });
         }
         calls += tool_calls.len();
         if calls > 64 { return Err("AI turn exceeded its 64 tool-call limit.".into()); }
@@ -117,6 +127,7 @@ async fn run(client: &reqwest::Client, connection: &Connection, root: PathBuf, m
         history.push(message);
         within_budget(&history)?;
         if tools.is_none() {
+            progress("Preparing code tools…".into());
             let root = root.clone();
             tools = Some(Arc::new(tokio::task::spawn_blocking(move || CodeTools::new(&root)).await
                 .map_err(|_| "Code inventory worker failed.")??));
@@ -125,6 +136,7 @@ async fn run(client: &reqwest::Client, connection: &Connection, root: PathBuf, m
             let tools = tools.as_ref().unwrap().clone();
             let name = call["function"]["name"].as_str().unwrap().to_owned();
             let args = call["function"]["arguments"].as_str().unwrap().to_owned();
+            progress(tool_activity(&name, &args, connection));
             let mut result = tokio::task::spawn_blocking(move || tools.call(&name, &args)).await
                 .map_err(|_| "Code inspection worker failed.")?;
             redact_value(&mut result, connection);
@@ -133,6 +145,34 @@ async fn run(client: &reqwest::Client, connection: &Connection, root: PathBuf, m
         }
     }
     Err("AI turn exceeded its 16 request limit.".into())
+}
+
+// Tool arguments are untrusted. Keep activity text short, single-line, and redacted.
+fn tool_activity(name: &str, args: &str, connection: &Connection) -> String {
+    let args: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let detail = |key: &str| {
+        let redacted = connection.redact(args[key].as_str().unwrap_or(""));
+        let single_line: String = redacted.chars().filter(|c| !c.is_control()).collect();
+        let redacted = connection.redact(&single_line);
+        let mut chars = redacted.chars();
+        let mut text: String = chars.by_ref().take(120).collect();
+        if chars.next().is_some() { text.push('…'); }
+        text
+    };
+    let path = detail("path");
+    match name {
+        "list_files" if path.is_empty() => "Listing files…".into(),
+        "list_files" => format!("Listing files in {path}…"),
+        "read_file" if path.is_empty() => "Reading file…".into(),
+        "read_file" => format!("Reading {path}…"),
+        "search_code" => {
+            let query = detail("query");
+            let scope = if path.is_empty() { String::new() } else { format!(" in {path}") };
+            if query.is_empty() { format!("Searching code{scope}…") }
+            else { format!("Searching for “{query}”{scope}…") }
+        }
+        _ => "Processing tool call…".into(),
+    }
 }
 
 #[cfg(test)]
